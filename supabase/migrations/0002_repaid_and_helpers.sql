@@ -1,0 +1,2 @@
+-- rev_mark_repaid, rev_unmark_repaid, rev_whoami (applied 2026-11-03 as revenue_0002_repaid_and_helpers)
+-- See Supabase migration history for the exact body.

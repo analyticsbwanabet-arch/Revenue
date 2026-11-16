@@ -1,0 +1,1 @@
+-- rev_imp_assign, rev_imp_expense, rev_imp_fine (applied 2026-11-03 as revenue_0004_import_shorthands)

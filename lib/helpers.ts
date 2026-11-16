@@ -60,3 +60,20 @@ export const COUNTER_ROLES = [
   { value: "waitress", label: "Waitress" },
   { value: "other", label: "Other" },
 ];
+
+const TZ = "Africa/Lusaka";
+/** ISO timestamp -> HH:MM in Lusaka time */
+export const fmtTime = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: TZ }) : "";
+/** ISO timestamp -> dd/mm/yyyy HH:MM in Lusaka time */
+export const fmtDateTime = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: TZ }) : "";
+/** ISO timestamp -> value for <input type=datetime-local> expressed in Lusaka time */
+export const toLocalInput = (iso: string | null | undefined) => {
+  if (!iso) return "";
+  const p = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date(iso));
+  const g = (t: string) => p.find((x) => x.type === t)?.value || "00";
+  return `${g("year")}-${g("month")}-${g("day")}T${g("hour") === "24" ? "00" : g("hour")}:${g("minute")}`;
+};
+/** datetime-local value (Lusaka time, UTC+2, no DST) -> ISO */
+export const fromLocalInput = (v: string) => (v ? new Date(v + ":00+02:00").toISOString() : null);

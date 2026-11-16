@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuth, supabase } from "@/lib/auth-context";
-import { fmtK, fmtSigned, dmy, todayIso, addDays, weekday, r2, num, DENOMS, COUNTER_ROLES } from "@/lib/helpers";
+import { fmtK, fmtSigned, dmy, todayIso, addDays, weekday, r2, num, DENOMS, COUNTER_ROLES, fmtTime, fmtDateTime, toLocalInput, fromLocalInput } from "@/lib/helpers";
 import EmployeeSelect from "@/components/EmployeeSelect";
 import type {
   Branch, Employee, Section, ExpenseCategory, Counterparty, ShortageReason, RevDay, ShiftEntry, Assignment,
@@ -45,6 +45,7 @@ export default function DailyEntry() {
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [reasons, setReasons] = useState<ShortageReason[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [allNames, setAllNames] = useState<Record<string, string>>({});
 
   const [day, setDay] = useState<RevDay | null>(null);
   const [summary, setSummary] = useState<DaySummary | null>(null);
@@ -102,9 +103,11 @@ export default function DailyEntry() {
   useEffect(() => {
     if (!branchId || !date) return;
     (async () => {
-      const { data } = await supabase.from("employees")
-        .select("id,full_name,position,branch_id,employment_status,date_started,date_ended,is_protected")
-        .eq("branch_id", branchId).order("full_name");
+      const [{ data }, { data: all }] = await Promise.all([
+        supabase.from("employees").select("id,full_name,position,branch_id,employment_status,date_started,date_ended,is_protected").eq("branch_id", branchId).order("full_name"),
+        supabase.from("employees").select("id,full_name"),
+      ]);
+      setAllNames(Object.fromEntries((all || []).map((e: any) => [e.id, e.full_name])));
       const list = (data || []).filter((e: Employee) =>
         (!e.date_started || e.date_started <= date) && (!e.date_ended || e.date_ended >= date) && (owner || !e.is_protected));
       setEmployees(list);
@@ -347,7 +350,7 @@ export default function DailyEntry() {
   const [ff, setFf] = useState({ employee_id: "", amount: "", reason: "" });
   const [fj, setFj] = useState({ amount: "", reason: "unexplained", note: "" });
 
-  const empName = (id: string | null) => employees.find((e) => e.id === id)?.full_name || (id ? "Former staff" : "");
+  const empName = (id: string | null) => (id ? employees.find((e) => e.id === id)?.full_name || allNames[id] || "Unknown staff" : "");
   const catName = (id: string) => categories.find((c) => c.id === id)?.name || "";
 
   // ---------- render ----------
@@ -509,7 +512,7 @@ export default function DailyEntry() {
               {transfers.length > 0 && (
                 <table className="tbl mb-3"><thead><tr><th>Direction</th><th>Counterparty</th><th>Number</th><th>By</th><th>Time</th><th className="num">Amount</th><th /></tr></thead>
                   <tbody>{transfers.map((t) => { const cp = counterparties.find((c) => c.id === t.counterparty_id); return (
-                    <tr key={t.id}><td style={{ color: t.direction === "sent" ? "#f87171" : "#4ade80" }}>{t.direction === "sent" ? "Sent from shop" : "Received by shop"}</td><td>{cp?.name || t.counterparty_text}</td><td style={{ color: "#a3a3a3" }}>{t.mobile_number || cp?.mobile_number}</td><td style={{ color: "#a3a3a3" }}>{empName(t.done_by_employee_id)}</td><td style={{ color: "#636363" }}>{t.done_at ? new Date(t.done_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : ""}</td><td className="num">{fmtK(t.amount)}</td>
+                    <tr key={t.id}><td style={{ color: t.direction === "sent" ? "#f87171" : "#4ade80" }}>{t.direction === "sent" ? "Sent from shop" : "Received by shop"}</td><td>{cp?.name || t.counterparty_text}</td><td style={{ color: "#a3a3a3" }}>{t.mobile_number || cp?.mobile_number}</td><td style={{ color: "#a3a3a3" }}>{empName(t.done_by_employee_id)}</td><td style={{ color: "#636363" }}>{fmtTime(t.done_at)}</td><td className="num">{fmtK(t.amount)}</td>
                       <td className="num">{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_cash_transfers", t.id)}>✕</button>}</td></tr>); })}</tbody></table>
               )}
               {editable && (
@@ -523,7 +526,7 @@ export default function DailyEntry() {
                   <input type="time" className="inp" value={ft.time} onChange={(e) => setFt({ ...ft, time: e.target.value })} />
                   <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="Amount" value={ft.amount} onChange={(e) => setFt({ ...ft, amount: e.target.value })} />
                   <button className="btn btn-sm btn-green" disabled={!ft.counterparty_id || num(ft.amount) <= 0} onClick={async () => {
-                    const done_at = ft.time ? new Date(`${date}T${ft.time}:00`).toISOString() : new Date().toISOString();
+                    const done_at = ft.time ? fromLocalInput(`${date}T${ft.time}`) : new Date().toISOString();
                     if (await insertRow("rev_cash_transfers", { day_id: day.id, direction: ft.direction, amount: r2(num(ft.amount)), counterparty_id: ft.counterparty_id, mobile_number: ft.mobile_number || null, done_by_employee_id: ft.done_by_employee_id || null, done_at, created_by: email }))
                       setFt({ ...ft, amount: "", time: "" });
                   }}>Add</button>
@@ -609,7 +612,7 @@ export default function DailyEntry() {
             <div className="chart-card">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
                 <div className="h2" style={{ marginBottom: 0 }}>🧮 Closing cash count <span style={{ color: "#a3a3a3", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• counted the next morning</span></div>
-                {!count && editable && <button className="btn btn-sm btn-green" onClick={() => { setCount(blankCount(day.id)); setDirty(true); }}>Enter count</button>}
+                {!count && editable && <button className="btn btn-sm btn-green" onClick={() => { setCount({ ...blankCount(day.id), counted_at: new Date().toISOString() }); setDirty(true); }}>Enter count</button>}
               </div>
               {count && (
                 <>
@@ -623,14 +626,14 @@ export default function DailyEntry() {
                     ))}
                     <div>
                       <label className="lbl">Other</label>
-                      <input type="number" step="0.01" className="inp inp-num" placeholder="0.00" value={count.other_amount || ""} onChange={(e) => { setCount({ ...count, other_amount: e.target.value === "" ? 0 : (e.target.value as any) }); setDirty(true); }} disabled={!editable} />
+                      <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="0.00" value={count.other_amount || ""} onChange={(e) => { setCount({ ...count, other_amount: e.target.value === "" ? 0 : (e.target.value as any) }); setDirty(true); }} disabled={!editable} />
                     </div>
                   </div>
                   <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 170px" }}>
                     <div><label className="lbl">Other note</label><input className="inp" placeholder="e.g. coins bag, mobile money float" value={count.other_note || ""} onChange={(e) => { setCount({ ...count, other_note: e.target.value }); setDirty(true); }} disabled={!editable} /></div>
                     <div><label className="lbl">Counted by</label><EmployeeSelect employees={employees} value={count.counted_by_employee_id} onChange={(v) => { setCount({ ...count, counted_by_employee_id: v || null }); setDirty(true); }} disabled={!editable} /></div>
                     <div><label className="lbl">Witness</label><EmployeeSelect employees={employees} value={count.witness_employee_id} onChange={(v) => { setCount({ ...count, witness_employee_id: v || null }); setDirty(true); }} disabled={!editable} placeholder="Optional" /></div>
-                    <div><label className="lbl">Counted at</label><input type="datetime-local" className="inp" value={count.counted_at ? new Date(count.counted_at).toISOString().slice(0, 16) : ""} onChange={(e) => { setCount({ ...count, counted_at: e.target.value ? new Date(e.target.value).toISOString() : null }); setDirty(true); }} disabled={!editable} /></div>
+                    <div><label className="lbl">Counted at</label><input type="datetime-local" className="inp" value={toLocalInput(count.counted_at)} onChange={(e) => { setCount({ ...count, counted_at: fromLocalInput(e.target.value) }); setDirty(true); }} disabled={!editable} /></div>
                   </div>
                   <div className="mt-3 text-[13px]">Counted total: <b style={{ color: "#facc15" }}>{fmtK(countTotal(count))}</b></div>
                 </>
@@ -724,7 +727,7 @@ export default function DailyEntry() {
               ) : (
                 <div className="text-[11px]" style={{ color: "#f87171" }}>🔒 Locked. Managers can edit today and yesterday only. The owner can edit any day or open a window.</div>
               )}
-              {day.submitted_at && <div className="text-[10px]" style={{ color: "#636363" }}>Submitted by {day.submitted_by} on {new Date(day.submitted_at).toLocaleString("en-GB")}</div>}
+              {day.submitted_at && <div className="text-[10px]" style={{ color: "#636363" }}>Submitted by {day.submitted_by} on {fmtDateTime(day.submitted_at)}</div>}
               {dirty && <div className="text-[10px]" style={{ color: "#fbbf24" }}>Unsaved changes in figures, cashiers, count or notes.</div>}
             </div>
 

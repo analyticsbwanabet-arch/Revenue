@@ -57,6 +57,21 @@ export function AuthProvider({ children, initialRole }: {
     loading: !initialRole,
   });
 
+  // The root layout persists across navigation, so when the server passes a role after login, sync it in.
+  useEffect(() => {
+    if (!initialRole) return;
+    setAuthState({
+      allowedBranchIds: initialRole.is_super_admin ? null : (initialRole.branch_ids || []),
+      isSuperAdmin: initialRole.is_super_admin || false,
+      isOwner: initialRole.is_owner || false,
+      readOnly: initialRole.read_only || false,
+      displayName: initialRole.display_name || "",
+      logName: initialRole.log_name || initialRole.display_name || "",
+      email: initialRole.email || "",
+      loading: false,
+    });
+  }, [initialRole]);
+
   useEffect(() => {
     // If we already have the role from the server, no need to fetch
     if (initialRole) return;

@@ -34,32 +34,32 @@ export default function LoginForm() {
 
   return (
     <form onSubmit={handleLogin} className="flex flex-col gap-4">
-      <div className="rounded-xl p-6" style={{ background: "#141414", border: "1px solid #2a2a2a" }}>
-        <div className="text-sm font-semibold mb-4" style={{ color: "#a3a3a3" }}>Sign in to your account</div>
+      <div className="rounded-xl p-6" style={{ background: "#121519", border: "1px solid #23272e" }}>
+        <div className="text-sm font-semibold mb-4" style={{ color: "#9aa0a8" }}>Sign in to your account</div>
 
         <div className="flex flex-col gap-3">
           <div>
-            <label className="text-xs font-medium mb-1 block" style={{ color: "#636363" }}>Email</label>
+            <label className="text-xs font-medium mb-1 block" style={{ color: "#6b7280" }}>Email</label>
             <input
               type="email" value={email} onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com" required autoFocus
               className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-colors"
-              style={{ background: "#0a0a0a", border: "1px solid #2a2a2a", color: "#f5f5f5" }}
+              style={{ background: "#0b0d10", border: "1px solid #23272e", color: "#e6e8eb" }}
             />
           </div>
           <div>
-            <label className="text-xs font-medium mb-1 block" style={{ color: "#636363" }}>Password</label>
+            <label className="text-xs font-medium mb-1 block" style={{ color: "#6b7280" }}>Password</label>
             <input
               type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••" required
               className="w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-colors"
-              style={{ background: "#0a0a0a", border: "1px solid #2a2a2a", color: "#f5f5f5" }}
+              style={{ background: "#0b0d10", border: "1px solid #23272e", color: "#e6e8eb" }}
             />
           </div>
         </div>
 
         {error && (
-          <div className="mt-3 px-3 py-2 rounded-lg text-xs" style={{ background: "#f8717115", color: "#f87171", border: "1px solid #f8717130" }}>
+          <div className="mt-3 px-3 py-2 rounded-lg text-xs" style={{ background: "#d9534f15", color: "#d9534f", border: "1px solid #d9534f30" }}>
             {error}
           </div>
         )}
@@ -67,13 +67,13 @@ export default function LoginForm() {
         <button
           type="submit" disabled={loading}
           className="w-full mt-4 py-2.5 rounded-lg font-semibold text-sm transition-all"
-          style={{ background: loading ? "#2a2a2a" : "#22c55e", color: loading ? "#636363" : "#000" }}
+          style={{ background: loading ? "#23272e" : "#3fb67a", color: loading ? "#6b7280" : "#000" }}
         >
           {loading ? "Signing in..." : "Sign In"}
         </button>
       </div>
 
-      <p className="text-center text-xs" style={{ color: "#636363" }}>
+      <p className="text-center text-xs" style={{ color: "#6b7280" }}>
         BwanaBet Zambia • Daily Revenue System
       </p>
     </form>

@@ -23,7 +23,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </AuthProvider>
         {role && (
           <footer className="max-w-[1360px] mx-auto px-7 pb-8 pt-4 flex justify-between flex-wrap gap-2 text-[11px]"
-            style={{ borderTop: "1px solid #2a2a2a", color: "#636363" }}>
+            style={{ borderTop: "1px solid #23272e", color: "#6b7280" }}>
             <span>BwanaBet Daily Revenue System</span>
             <span>Amounts in Kwacha (K) • Dates dd/mm/yyyy</span>
           </footer>

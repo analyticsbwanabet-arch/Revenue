@@ -82,15 +82,15 @@ export default function SyncPage() {
         <div><label className="lbl">From</label><input type="date" className="inp" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
         <div><label className="lbl">To</label><input type="date" className="inp" value={to} onChange={(e) => setTo(e.target.value)} /></div>
         <div className="flex-1" />
-        <button className="btn" onClick={exportCsv} disabled={!syncable.length}>⬇ CSV (daily log shape)</button>
-        <button className="btn btn-green" onClick={runSync} disabled={busy || !syncable.length || readOnly}>{busy ? "Syncing..." : `🔁 Sync ${syncable.length} to payroll Daily Log`}</button>
+        <button className="btn" onClick={exportCsv} disabled={!syncable.length}>CSV (daily log shape)</button>
+        <button className="btn btn-green" onClick={runSync} disabled={busy || !syncable.length || readOnly}>{busy ? "Syncing..." : `Sync ${syncable.length} to payroll Daily Log`}</button>
       </div>
 
-      <div className="chart-card text-[12px]" style={{ color: "#a3a3a3" }}>
+      <div className="chart-card text-[12px]" style={{ color: "#9aa0a8" }}>
         Sync writes each cashier's shortage, advance and fine amounts for the day into the payroll <b>daily_logs</b> row (employee_id + date), creating the row as "present" if the manager has not logged attendance yet. Amounts are the sum for that employee and day, so running it again is safe. Shortages marked "repaid in cash" or "written off" are not sent.
-        {blocked.length > 0 && <div className="mt-2" style={{ color: "#fbbf24" }}>{blocked.length} imported shortage(s) have an unmatched staff name and will be skipped until a cashier is selected on the day's entry.</div>}
-        {err && <div className="mt-2" style={{ color: "#f87171" }}>{err}</div>}
-        {result && <div className="mt-2" style={{ color: "#4ade80" }}>Synced {result.length} line(s): {result.filter((r) => r.outcome === "updated").length} updated existing logs, {result.filter((r) => r.outcome === "inserted").length} created new log rows.</div>}
+        {blocked.length > 0 && <div className="mt-2" style={{ color: "#c9a227" }}>{blocked.length} imported shortage(s) have an unmatched staff name and will be skipped until a cashier is selected on the day's entry.</div>}
+        {err && <div className="mt-2" style={{ color: "#d9534f" }}>{err}</div>}
+        {result && <div className="mt-2" style={{ color: "#3fb67a" }}>Synced {result.length} line(s): {result.filter((r) => r.outcome === "updated").length} updated existing logs, {result.filter((r) => r.outcome === "inserted").length} created new log rows.</div>}
       </div>
 
       <div className="chart-card" style={{ overflowX: "auto" }}>
@@ -98,13 +98,13 @@ export default function SyncPage() {
         <table className="tbl"><thead><tr><th>Date</th><th>Type</th><th>Staff</th><th>Note</th><th>Resolution</th><th className="num">Amount</th><th>Payroll</th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.kind + r.id} className="row-hover">
-              <td>{dmy(r.date)}</td><td style={{ color: r.kind === "shortage" ? "#f87171" : r.kind === "advance" ? "#22d3ee" : "#fbbf24" }}>{r.kind}</td>
-              <td>{r.employee_id ? emps[r.employee_id] || "Former staff" : <span style={{ color: "#fbbf24" }}>{r.employee_text} (unmatched)</span>}</td><td style={{ color: "#a3a3a3" }}>{r.note}</td>
-              <td style={{ color: "#636363" }}>{r.resolution === "cash_repaid" ? "repaid in cash (not synced)" : r.resolution === "written_off" ? "written off (not synced)" : r.resolution === "payroll" ? "deduct from pay" : ""}</td>
+              <td>{dmy(r.date)}</td><td style={{ color: r.kind === "shortage" ? "#d9534f" : r.kind === "advance" ? "#9aa0a8" : "#c9a227" }}>{r.kind}</td>
+              <td>{r.employee_id ? emps[r.employee_id] || "Former staff" : <span style={{ color: "#c9a227" }}>{r.employee_text} (unmatched)</span>}</td><td style={{ color: "#9aa0a8" }}>{r.note}</td>
+              <td style={{ color: "#6b7280" }}>{r.resolution === "cash_repaid" ? "repaid in cash (not synced)" : r.resolution === "written_off" ? "written off (not synced)" : r.resolution === "payroll" ? "deduct from pay" : ""}</td>
               <td className="num">{fmtK(r.amount)}</td>
-              <td style={{ color: r.synced_at ? "#4ade80" : "#636363" }}>{r.synced_at ? `synced ${new Date(r.synced_at).toLocaleDateString("en-GB")}` : "not synced"}</td>
+              <td style={{ color: r.synced_at ? "#3fb67a" : "#6b7280" }}>{r.synced_at ? `synced ${new Date(r.synced_at).toLocaleDateString("en-GB")}` : "not synced"}</td>
             </tr>))}
-            {!rows.length && <tr><td colSpan={7} style={{ color: "#636363" }}>Nothing in this range.</td></tr>}</tbody></table>
+            {!rows.length && <tr><td colSpan={7} style={{ color: "#6b7280" }}>Nothing in this range.</td></tr>}</tbody></table>
       </div>
     </div>
   );

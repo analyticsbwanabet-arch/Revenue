@@ -87,43 +87,43 @@ export default function CalendarView() {
 
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
         {[
-          { l: "Cash revenue", v: fmtK(totals.cash), c: "#4ade80" },
-          { l: "Expenses", v: fmtK(totals.exp), c: "#f5f5f5" },
-          { l: "Net after expenses", v: fmtK(totals.net), c: "#facc15" },
-          { l: "Staff shortages", v: fmtK(totals.sh), c: "#f87171" },
-          { l: "Days with variance > K" + threshold, v: String(totals.flagged), c: totals.flagged ? "#f87171" : "#4ade80" },
-          { l: "Missing days (past)", v: String(missing.length), c: missing.length ? "#f87171" : "#4ade80" },
-          { l: "Days not counted", v: String(uncounted.length), c: uncounted.length ? "#fbbf24" : "#4ade80" },
-          { l: "Submitted / entered", v: `${totals.submitted} / ${days.length}`, c: "#22d3ee" },
+          { l: "Cash revenue", v: fmtK(totals.cash), c: "#3fb67a" },
+          { l: "Expenses", v: fmtK(totals.exp), c: "#e6e8eb" },
+          { l: "Net after expenses", v: fmtK(totals.net), c: "#c9a227" },
+          { l: "Staff shortages", v: fmtK(totals.sh), c: "#d9534f" },
+          { l: "Days with variance > K" + threshold, v: String(totals.flagged), c: totals.flagged ? "#d9534f" : "#3fb67a" },
+          { l: "Missing days (past)", v: String(missing.length), c: missing.length ? "#d9534f" : "#3fb67a" },
+          { l: "Days not counted", v: String(uncounted.length), c: uncounted.length ? "#c9a227" : "#3fb67a" },
+          { l: "Submitted / entered", v: `${totals.submitted} / ${days.length}`, c: "#9aa0a8" },
         ].map((s) => (
-          <div className="stat-card" key={s.l}><div className="text-[10px] uppercase tracking-wider" style={{ color: "#636363" }}>{s.l}</div><div className="text-[18px] font-bold mt-1" style={{ color: s.c }}>{s.v}</div></div>
+          <div className="stat-card" key={s.l}><div className="text-[10px] uppercase tracking-wider" style={{ color: "#6b7280" }}>{s.l}</div><div className="text-[18px] font-bold mt-1" style={{ color: s.c }}>{s.v}</div></div>
         ))}
       </div>
 
       <div className="chart-card" style={{ padding: 12 }}>
-        {loading && <div className="text-xs mb-2" style={{ color: "#636363" }}>Loading...</div>}
+        {loading && <div className="text-xs mb-2" style={{ color: "#6b7280" }}>Loading...</div>}
         <div className="grid gap-1.5" style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}>
-          {DOW.map((d) => <div key={d} className="text-[10px] uppercase tracking-wider text-center py-1" style={{ color: "#636363" }}>{d}</div>)}
+          {DOW.map((d) => <div key={d} className="text-[10px] uppercase tracking-wider text-center py-1" style={{ color: "#6b7280" }}>{d}</div>)}
           {grid.map((iso, i) => {
             if (!iso) return <div key={i} />;
             const d = byDate[iso];
             const isPast = iso < today; const isToday = iso === today; const future = iso > today;
             const v = d?.variance == null ? null : Number(d.variance);
             const flagged = v != null && Math.abs(v) > threshold;
-            const border = future ? "#1c1c1c" : !d ? "#f8717160" : flagged ? "#f8717190" : d.counted_closing == null ? "#fbbf2460" : d.status === "submitted" ? "#22c55e50" : "#2a2a2a";
-            const bg = !d && isPast ? "#f8717108" : flagged ? "#f8717108" : "#0a0a0a";
+            const border = future ? "#181c21" : !d ? "#d9534f60" : flagged ? "#d9534f90" : d.counted_closing == null ? "#c9a22760" : d.status === "submitted" ? "#3fb67a50" : "#23272e";
+            const bg = !d && isPast ? "#d9534f08" : flagged ? "#d9534f08" : "#0b0d10";
             return (
               <Link key={iso} href={`/entry?branch=${branchId}&date=${iso}`} className="block rounded-lg p-2 transition-colors row-hover" style={{ border: `1px solid ${border}`, background: bg, minHeight: 84, opacity: future ? 0.4 : 1 }}>
                 <div className="flex justify-between items-center">
-                  <span className="text-[12px] font-semibold" style={{ color: isToday ? "#facc15" : "#f5f5f5" }}>{iso.slice(8)}</span>
-                  {d ? <span className="text-[9px]" style={{ color: d.status === "submitted" ? "#4ade80" : "#fbbf24" }}>{d.status === "submitted" ? "✓" : "open"}</span>
-                    : isPast ? <span className="text-[9px]" style={{ color: "#f87171" }}>missing</span> : null}
+                  <span className="text-[12px] font-semibold" style={{ color: isToday ? "#c9a227" : "#e6e8eb" }}>{iso.slice(8)}</span>
+                  {d ? <span className="text-[9px]" style={{ color: d.status === "submitted" ? "#3fb67a" : "#c9a227" }}>{d.status === "submitted" ? "✓" : "open"}</span>
+                    : isPast ? <span className="text-[9px]" style={{ color: "#d9534f" }}>missing</span> : null}
                 </div>
                 {d && (
                   <div className="mt-1 text-[10px] leading-4">
-                    <div style={{ color: Number(d.net_after_costs) < 0 ? "#f87171" : "#a3a3a3" }}>net {fmtK(d.net_after_costs)}</div>
-                    <div style={{ color: v == null ? "#636363" : flagged ? "#f87171" : "#4ade80" }}>{v == null ? "not counted" : `var ${fmtSigned(v)}`}</div>
-                    {Number(d.shortages) > 0 && <div style={{ color: "#fbbf24" }}>short {fmtK(d.shortages)}</div>}
+                    <div style={{ color: Number(d.net_after_costs) < 0 ? "#d9534f" : "#9aa0a8" }}>net {fmtK(d.net_after_costs)}</div>
+                    <div style={{ color: v == null ? "#6b7280" : flagged ? "#d9534f" : "#3fb67a" }}>{v == null ? "not counted" : `var ${fmtSigned(v)}`}</div>
+                    {Number(d.shortages) > 0 && <div style={{ color: "#c9a227" }}>short {fmtK(d.shortages)}</div>}
                   </div>
                 )}
               </Link>
@@ -140,16 +140,16 @@ export default function CalendarView() {
             <tbody>
               {days.map((d) => { const v = d.variance == null ? null : Number(d.variance); return (
                 <tr key={d.id} className="row-hover">
-                  <td><Link href={`/entry?branch=${branchId}&date=${d.day_date}`} style={{ color: "#22d3ee" }}>{dmy(d.day_date)}</Link>{d.lucky_balls_unverified && <span title="Lucky Balls unverified" style={{ color: "#fbbf24" }}> ⚑</span>}</td>
-                  <td style={{ color: d.status === "submitted" ? "#4ade80" : "#fbbf24" }}>{d.status}</td>
+                  <td><Link href={`/entry?branch=${branchId}&date=${d.day_date}`} style={{ color: "#9aa0a8" }}>{dmy(d.day_date)}</Link>{d.lucky_balls_unverified && <span title="Lucky Balls unverified" style={{ color: "#c9a227" }}> ⚑</span>}</td>
+                  <td style={{ color: d.status === "submitted" ? "#3fb67a" : "#c9a227" }}>{d.status}</td>
                   <td className="num">{fmtK(d.opening_cash)}</td><td className="num">{fmtK(d.tickets)}</td><td className="num">{fmtK(d.deposits)}</td><td className="num">{fmtK(d.payouts)}</td><td className="num">{fmtK(d.withdrawals)}</td>
                   <td className="num">{fmtK(d.lb_in)}</td><td className="num">{fmtK(d.lb_out)}</td><td className="num">{fmtK(d.l6_in)}</td><td className="num">{fmtK(d.l6_out)}</td>
-                  <td className="num" style={{ color: Number(d.cash_revenue) < 0 ? "#f87171" : "#4ade80" }}>{fmtK(d.cash_revenue)}</td>
-                  <td className="num">{fmtK(d.expenses)}</td><td className="num">{fmtK(d.sent)}</td><td className="num">{fmtK(d.received)}</td><td className="num" style={{ color: Number(d.shortages) > 0 ? "#f87171" : undefined }}>{fmtK(d.shortages)}</td>
+                  <td className="num" style={{ color: Number(d.cash_revenue) < 0 ? "#d9534f" : "#3fb67a" }}>{fmtK(d.cash_revenue)}</td>
+                  <td className="num">{fmtK(d.expenses)}</td><td className="num">{fmtK(d.sent)}</td><td className="num">{fmtK(d.received)}</td><td className="num" style={{ color: Number(d.shortages) > 0 ? "#d9534f" : undefined }}>{fmtK(d.shortages)}</td>
                   <td className="num">{fmtK(d.expected_closing)}</td><td className="num">{d.counted_closing == null ? "" : fmtK(d.counted_closing)}</td>
-                  <td className="num" style={{ color: v == null ? "#636363" : Math.abs(v) > threshold ? "#f87171" : "#4ade80" }}>{v == null ? "" : fmtSigned(v)}</td>
+                  <td className="num" style={{ color: v == null ? "#6b7280" : Math.abs(v) > threshold ? "#d9534f" : "#3fb67a" }}>{v == null ? "" : fmtSigned(v)}</td>
                 </tr>); })}
-              {days.length === 0 && !loading && <tr><td colSpan={19} style={{ color: "#636363" }}>No days entered for this month.</td></tr>}
+              {days.length === 0 && !loading && <tr><td colSpan={19} style={{ color: "#6b7280" }}>No days entered for this month.</td></tr>}
             </tbody>
           </table>
         </div>

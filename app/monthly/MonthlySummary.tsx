@@ -160,9 +160,9 @@ export default function MonthlySummary() {
     XLSX.writeFile(wb, `BwanaBet_Revenue_${from}_to_${to}.xlsx`);
   };
 
-  if (!owner && !authLoading) return <div className="text-sm" style={{ color: "#f87171" }}>Owner only.</div>;
+  if (!owner && !authLoading) return <div className="text-sm" style={{ color: "#d9534f" }}>Owner only.</div>;
 
-  const num = (v: number, red = false) => <td className="num" style={{ color: red && v < 0 ? "#f87171" : undefined }}>{fmtK(v)}</td>;
+  const num = (v: number, red = false) => <td className="num" style={{ color: red && v < 0 ? "#d9534f" : undefined }}>{fmtK(v)}</td>;
   const tabs: [typeof tab, string][] = [["stores", "Per store"], ["sections", "Per section / shift"], ["lucky", "Lucky Balls"], ["shortages", "Shortages by cashier"], ["expenses", "Expenses"], ["days", "All days"]];
 
   return (
@@ -177,23 +177,23 @@ export default function MonthlySummary() {
           <button className="btn btn-sm" onClick={() => { const m = addDays(monthEnd(to), 1); setFrom(monthStart(m)); setTo(monthEnd(m)); }}>month ▶</button>
         </div>
         <div className="flex-1" />
-        <button className="btn btn-green" onClick={exportXlsx} disabled={loading || !days.length}>⬇ Export to Excel</button>
+        <button className="btn btn-green" onClick={exportXlsx} disabled={loading || !days.length}>Export to Excel</button>
       </div>
 
       <div className="flex gap-1.5 flex-wrap">{tabs.map(([k, l]) => <button key={k} className={`chip ${tab === k ? "chip-active" : ""}`} onClick={() => setTab(k)}>{l}</button>)}</div>
-      {loading && <div className="text-xs" style={{ color: "#636363" }}>Loading...</div>}
+      {loading && <div className="text-xs" style={{ color: "#6b7280" }}>Loading...</div>}
 
       {tab === "stores" && (
         <div className="chart-card" style={{ overflowX: "auto" }}>
           <table className="tbl"><thead><tr><th>Store</th><th className="num">Days</th><th className="num">Missing</th><th className="num">Tickets</th><th className="num">Deposits</th><th className="num">Payouts</th><th className="num">Withdrawals</th><th className="num">Sports net</th><th className="num">Sports GGR</th><th className="num">LB bal</th><th className="num">L6 bal</th><th className="num">Cash rev</th><th className="num">Expenses</th><th className="num">Sent HQ</th><th className="num">Received</th><th className="num">Shortages</th><th className="num">Net</th><th className="num">Var total</th><th className="num">Var &gt; K{threshold}</th></tr></thead>
             <tbody>{storeRows.map((r) => (
-              <tr key={r.id} className="row-hover"><td style={{ color: "#f5f5f5", fontWeight: 600 }}>{r.name}{r.unverified ? <span title={`${r.unverified} days with unverified Lucky Balls`} style={{ color: "#fbbf24" }}> ⚑</span> : null}</td><td className="num">{r.days}</td><td className="num" style={{ color: r.missing ? "#f87171" : "#4ade80" }}>{r.missing}</td>
+              <tr key={r.id} className="row-hover"><td style={{ color: "#e6e8eb", fontWeight: 600 }}>{r.name}{r.unverified ? <span title={`${r.unverified} days with unverified Lucky Balls`} style={{ color: "#c9a227" }}> ⚑</span> : null}</td><td className="num">{r.days}</td><td className="num" style={{ color: r.missing ? "#d9534f" : "#3fb67a" }}>{r.missing}</td>
                 {num(r.tickets)}{num(r.deposits)}{num(r.payouts)}{num(r.withdrawals)}{num(r.sports_net, true)}{num(r.sports_ggr, true)}{num(r.lb_balance, true)}{num(r.l6_balance, true)}{num(r.cash_revenue, true)}{num(r.expenses)}{num(r.sent)}{num(r.received)}{num(r.shortages)}
-                <td className="num" style={{ color: "#facc15", fontWeight: 600 }}>{fmtK(r.net)}</td><td className="num">{fmtSigned(r.variance)}</td><td className="num" style={{ color: r.flagged ? "#f87171" : "#4ade80" }}>{r.flagged}</td></tr>))}
+                <td className="num" style={{ color: "#c9a227", fontWeight: 600 }}>{fmtK(r.net)}</td><td className="num">{fmtSigned(r.variance)}</td><td className="num" style={{ color: r.flagged ? "#d9534f" : "#3fb67a" }}>{r.flagged}</td></tr>))}
               {storeRows.length > 1 && (() => { const t = storeRows.reduce((a: any, r) => { Object.keys(r).forEach((k) => { if (typeof (r as any)[k] === "number") a[k] = (a[k] || 0) + (r as any)[k]; }); return a; }, {}); return (
-                <tr style={{ fontWeight: 700, borderTop: "2px solid #2a2a2a" }}><td>Total</td><td className="num">{t.days}</td><td className="num">{t.missing}</td>{num(t.tickets)}{num(t.deposits)}{num(t.payouts)}{num(t.withdrawals)}{num(t.sports_net, true)}{num(t.sports_ggr, true)}{num(t.lb_balance, true)}{num(t.l6_balance, true)}{num(t.cash_revenue, true)}{num(t.expenses)}{num(t.sent)}{num(t.received)}{num(t.shortages)}<td className="num" style={{ color: "#facc15" }}>{fmtK(t.net)}</td><td className="num">{fmtSigned(t.variance)}</td><td className="num">{t.flagged}</td></tr>); })()}
+                <tr style={{ fontWeight: 700, borderTop: "2px solid #23272e" }}><td>Total</td><td className="num">{t.days}</td><td className="num">{t.missing}</td>{num(t.tickets)}{num(t.deposits)}{num(t.payouts)}{num(t.withdrawals)}{num(t.sports_net, true)}{num(t.sports_ggr, true)}{num(t.lb_balance, true)}{num(t.l6_balance, true)}{num(t.cash_revenue, true)}{num(t.expenses)}{num(t.sent)}{num(t.received)}{num(t.shortages)}<td className="num" style={{ color: "#c9a227" }}>{fmtK(t.net)}</td><td className="num">{fmtSigned(t.variance)}</td><td className="num">{t.flagged}</td></tr>); })()}
             </tbody></table>
-          <div className="text-[10px] mt-2" style={{ color: "#636363" }}>Sports net = tickets + deposits - payouts - withdrawals (cash view). Sports GGR = tickets - payouts (betting view). Missing = past dates in range with no entry.</div>
+          <div className="text-[10px] mt-2" style={{ color: "#6b7280" }}>Sports net = tickets + deposits - payouts - withdrawals (cash view). Sports GGR = tickets - payouts (betting view). Missing = past dates in range with no entry.</div>
         </div>
       )}
 
@@ -208,15 +208,15 @@ export default function MonthlySummary() {
         <div className="chart-card" style={{ maxWidth: 560 }}>
           <div className="h2">Lucky Balls {dmy(from)} to {dmy(to)}</div>
           <table className="tbl"><thead><tr><th>Store</th><th className="num">In</th><th className="num">Out</th><th className="num">Balance</th></tr></thead>
-            <tbody>{luckyRows.map((r, i) => <tr key={i} className="row-hover"><td>{r.label}</td>{num(r.in)}{num(r.out)}<td className="num" style={{ color: r.balance < 0 ? "#f87171" : "#4ade80", fontWeight: 600 }}>{fmtK(r.balance)}</td></tr>)}</tbody></table>
+            <tbody>{luckyRows.map((r, i) => <tr key={i} className="row-hover"><td>{r.label}</td>{num(r.in)}{num(r.out)}<td className="num" style={{ color: r.balance < 0 ? "#d9534f" : "#3fb67a", fontWeight: 600 }}>{fmtK(r.balance)}</td></tr>)}</tbody></table>
         </div>
       )}
 
       {tab === "shortages" && (
         <div className="chart-card" style={{ maxWidth: 900 }}>
           <table className="tbl"><thead><tr><th>Store</th><th>Cashier</th><th className="num">Count</th><th className="num">Total</th><th className="num">To payroll</th><th className="num">Repaid cash</th><th className="num">Written off</th><th className="num">Synced</th></tr></thead>
-            <tbody>{shortageRows.map((r, i) => <tr key={i} className="row-hover"><td>{r.branch}</td><td>{r.cashier}</td><td className="num">{r.count}</td><td className="num" style={{ color: "#f87171" }}>{fmtK(r.total)}</td>{num(r.payroll)}{num(r.repaid)}{num(r.written_off)}<td className="num">{r.synced}/{r.count}</td></tr>)}
-              {!shortageRows.length && <tr><td colSpan={8} style={{ color: "#636363" }}>No shortages in range.</td></tr>}</tbody></table>
+            <tbody>{shortageRows.map((r, i) => <tr key={i} className="row-hover"><td>{r.branch}</td><td>{r.cashier}</td><td className="num">{r.count}</td><td className="num" style={{ color: "#d9534f" }}>{fmtK(r.total)}</td>{num(r.payroll)}{num(r.repaid)}{num(r.written_off)}<td className="num">{r.synced}/{r.count}</td></tr>)}
+              {!shortageRows.length && <tr><td colSpan={8} style={{ color: "#6b7280" }}>No shortages in range.</td></tr>}</tbody></table>
         </div>
       )}
 
@@ -224,11 +224,11 @@ export default function MonthlySummary() {
         <div className="grid gap-4" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)" }}>
           <div className="chart-card"><div className="h2">By category</div>
             <table className="tbl"><thead><tr><th>Store</th><th>Category</th><th className="num">Count</th><th className="num">Total</th></tr></thead>
-              <tbody>{expenseRows.map((r, i) => <tr key={i} className="row-hover"><td>{r.branch}</td><td>{r.category}{r.flagged && <span style={{ color: "#fbbf24" }}> ⚑</span>}</td><td className="num">{r.count}</td>{num(r.total)}</tr>)}</tbody></table></div>
+              <tbody>{expenseRows.map((r, i) => <tr key={i} className="row-hover"><td>{r.branch}</td><td>{r.category}{r.flagged && <span style={{ color: "#c9a227" }}> ⚑</span>}</td><td className="num">{r.count}</td>{num(r.total)}</tr>)}</tbody></table></div>
           <div className="chart-card"><div className="h2">Flagged for owner</div>
             <table className="tbl"><thead><tr><th>Date</th><th>Store</th><th>Specification</th><th className="num">Amount</th></tr></thead>
               <tbody>{flaggedExpenses.map((e, i) => <tr key={i} className="row-hover"><td>{dmy(e.day.day_date)}</td><td>{bname(e.day.branch_id)}</td><td>{e.description}</td>{num(n(e.amount))}</tr>)}
-                {!flaggedExpenses.length && <tr><td colSpan={4} style={{ color: "#636363" }}>None.</td></tr>}</tbody></table></div>
+                {!flaggedExpenses.length && <tr><td colSpan={4} style={{ color: "#6b7280" }}>None.</td></tr>}</tbody></table></div>
         </div>
       )}
 
@@ -236,9 +236,9 @@ export default function MonthlySummary() {
         <div className="chart-card" style={{ overflowX: "auto" }}>
           <table className="tbl"><thead><tr><th>Store</th><th>Date</th><th>Status</th><th className="num">Opening</th><th className="num">Cash rev</th><th className="num">Expenses</th><th className="num">Sent</th><th className="num">Recv</th><th className="num">Short</th><th className="num">Expected</th><th className="num">Counted</th><th className="num">Variance</th><th>Notes</th></tr></thead>
             <tbody>{fDays.map((d) => { const v = d.variance == null ? null : n(d.variance); return (
-              <tr key={d.id} className="row-hover"><td>{bname(d.branch_id)}</td><td><a href={`/entry?branch=${d.branch_id}&date=${d.day_date}`} style={{ color: "#22d3ee" }}>{dmy(d.day_date)}</a></td><td style={{ color: d.status === "submitted" ? "#4ade80" : "#fbbf24" }}>{d.status}</td>
+              <tr key={d.id} className="row-hover"><td>{bname(d.branch_id)}</td><td><a href={`/entry?branch=${d.branch_id}&date=${d.day_date}`} style={{ color: "#9aa0a8" }}>{dmy(d.day_date)}</a></td><td style={{ color: d.status === "submitted" ? "#3fb67a" : "#c9a227" }}>{d.status}</td>
                 {num(n(d.opening_cash))}{num(n(d.cash_revenue), true)}{num(n(d.expenses))}{num(n(d.sent))}{num(n(d.received))}{num(n(d.shortages))}{num(n(d.expected_closing))}<td className="num">{d.counted_closing == null ? "" : fmtK(d.counted_closing)}</td>
-                <td className="num" style={{ color: v == null ? "#636363" : Math.abs(v) > threshold ? "#f87171" : "#4ade80" }}>{v == null ? "" : fmtSigned(v)}</td><td style={{ color: "#a3a3a3", maxWidth: 260 }}>{d.notes}</td></tr>); })}</tbody></table>
+                <td className="num" style={{ color: v == null ? "#6b7280" : Math.abs(v) > threshold ? "#d9534f" : "#3fb67a" }}>{v == null ? "" : fmtSigned(v)}</td><td style={{ color: "#9aa0a8", maxWidth: 260 }}>{d.notes}</td></tr>); })}</tbody></table>
         </div>
       )}
     </div>

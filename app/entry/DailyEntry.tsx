@@ -159,11 +159,22 @@ export default function DailyEntry() {
 
   useEffect(() => { loadDay(); }, [loadDay]);
 
-  const refreshSummary = useCallback(async () => {
+  // Refresh the saved lists and the summary only. Never touches unsaved shift figures, cashiers, count or notes.
+  const refreshLists = useCallback(async () => {
     if (!day) return;
-    const { data } = await supabase.from("rev_day_summary").select("*").eq("id", day.id).single();
-    if (data) setSummary(data as DaySummary);
-  }, [day]);
+    const [{ data: sm }, { data: ex }, { data: tr }, { data: sh }, { data: ad }, { data: fi }, { data: aj }, { data: os }] = await Promise.all([
+      supabase.from("rev_day_summary").select("*").eq("id", day.id).single(),
+      supabase.from("rev_expenses").select("*").eq("day_id", day.id).order("created_at"),
+      supabase.from("rev_cash_transfers").select("*").eq("day_id", day.id).order("created_at"),
+      supabase.from("rev_shortages").select("*").eq("day_id", day.id).order("created_at"),
+      supabase.from("rev_advances").select("*").eq("day_id", day.id).order("created_at"),
+      supabase.from("rev_fines").select("*").eq("day_id", day.id).order("created_at"),
+      supabase.from("rev_adjustments").select("*").eq("day_id", day.id).order("created_at"),
+      supabase.from("rev_shortages").select("*").eq("branch_id", branchId).eq("resolution", "payroll").lt("shortage_date", date).gte("shortage_date", addDays(date, -45)).order("shortage_date", { ascending: false }),
+    ]);
+    if (sm) setSummary(sm as DaySummary);
+    setExpenses(ex || []); setTransfers(tr || []); setShortages(sh || []); setAdvances(ad || []); setFines(fi || []); setAdjustments(aj || []); setOutstanding(os || []);
+  }, [day, branchId, date]);
 
   // ---------- permissions ----------
   const editable = !!day ? (summary?.editable ?? false) : (owner || (!readOnly && (date >= addDays(todayIso(), -(who?.edit_window_days ?? 1)))));
@@ -334,12 +345,12 @@ export default function DailyEntry() {
   const insertRow = async (table: string, row: any) => {
     const { error } = await supabase.from(table).insert(row);
     if (error) { setMsg({ type: "err", text: error.message }); return false; }
-    await loadDay(); return true;
+    await refreshLists(); return true;
   };
   const deleteRow = async (table: string, id: string) => {
     if (!confirm("Delete this line?")) return;
     const { error } = await supabase.from(table).delete().eq("id", id);
-    if (error) setMsg({ type: "err", text: error.message }); else loadDay();
+    if (error) setMsg({ type: "err", text: error.message }); else refreshLists();
   };
 
   // ---------- forms state ----------
@@ -350,12 +361,16 @@ export default function DailyEntry() {
   const [ff, setFf] = useState({ employee_id: "", amount: "", reason: "" });
   const [fj, setFj] = useState({ amount: "", reason: "unexplained", note: "" });
 
+  const MANAGER_POS = ["manager", "assistant_manager", "supervisor", "SUPERVISOR", "operations_manager"];
+  const CASHIER_POS = ["cashier", "senior_cashier", "waitress", "it_technician", "promoter"];
+  const managers = employees.filter((e) => MANAGER_POS.includes(e.position));
+  const cashiers = employees.filter((e) => CASHIER_POS.includes(e.position));
   const empName = (id: string | null) => (id ? employees.find((e) => e.id === id)?.full_name || allNames[id] || "Unknown staff" : "");
   const catName = (id: string) => categories.find((c) => c.id === id)?.name || "";
 
   // ---------- render ----------
-  if (authLoading || !who) return <div className="text-sm" style={{ color: "#636363" }}>Loading...</div>;
-  if (!branches.length) return <div className="text-sm" style={{ color: "#f87171" }}>No branch assigned to this login.</div>;
+  if (authLoading || !who) return <div className="text-sm" style={{ color: "#6b7280" }}>Loading...</div>;
+  if (!branches.length) return <div className="text-sm" style={{ color: "#d9534f" }}>No branch assigned to this login.</div>;
 
   const shiftEntriesForSelect = Object.entries(entries).filter(([, e]) => e.id);
 
@@ -378,36 +393,36 @@ export default function DailyEntry() {
             <button className="btn btn-sm" onClick={() => setDate(todayIso())}>Today</button>
           </div>
         </div>
-        <div className="text-[13px] font-semibold" style={{ color: "#f5f5f5" }}>{weekday(date)} {dmy(date)}</div>
+        <div className="text-[13px] font-semibold" style={{ color: "#e6e8eb" }}>{weekday(date)} {dmy(date)}</div>
         <div className="flex-1" />
         {day && (
-          <div className="text-[11px] flex items-center gap-3" style={{ color: "#a3a3a3" }}>
-            <span className="badge" style={{ background: day.status === "submitted" ? "#052e16" : "#422006", color: day.status === "submitted" ? "#4ade80" : "#facc15" }}>
-              {day.status === "submitted" ? "✅ Submitted" : "✏️ Open"}
+          <div className="text-[11px] flex items-center gap-3" style={{ color: "#9aa0a8" }}>
+            <span className="badge" style={{ background: day.status === "submitted" ? "#12261b" : "#2a2410", color: day.status === "submitted" ? "#3fb67a" : "#c9a227" }}>
+              {day.status === "submitted" ? "Submitted" : "Open"}
             </span>
-            {!editable && <span className="badge" style={{ background: "#3b1f2b", color: "#f87171" }}>🔒 Locked</span>}
-            {day.lucky_balls_unverified && <span className="badge" style={{ background: "#422006", color: "#fbbf24" }}>Lucky Balls unverified (imported)</span>}
+            {!editable && <span className="badge" style={{ background: "#2b1a1a", color: "#d9534f" }}>Locked</span>}
+            {day.lucky_balls_unverified && <span className="badge" style={{ background: "#2a2410", color: "#c9a227" }}>Lucky Balls unverified (imported)</span>}
           </div>
         )}
       </div>
 
       {msg && (
         <div className="px-3 py-2 rounded-lg text-xs" style={{
-          background: msg.type === "ok" ? "#22c55e15" : msg.type === "warn" ? "#fbbf2415" : "#f8717115",
-          color: msg.type === "ok" ? "#4ade80" : msg.type === "warn" ? "#fbbf24" : "#f87171",
-          border: `1px solid ${msg.type === "ok" ? "#22c55e30" : msg.type === "warn" ? "#fbbf2430" : "#f8717130"}` }}>
+          background: msg.type === "ok" ? "#3fb67a15" : msg.type === "warn" ? "#c9a22715" : "#d9534f15",
+          color: msg.type === "ok" ? "#3fb67a" : msg.type === "warn" ? "#c9a227" : "#d9534f",
+          border: `1px solid ${msg.type === "ok" ? "#3fb67a30" : msg.type === "warn" ? "#c9a22730" : "#d9534f30"}` }}>
           {msg.text}
         </div>
       )}
 
-      {loading ? <div className="text-sm" style={{ color: "#636363" }}>Loading day...</div> : !day ? (
+      {loading ? <div className="text-sm" style={{ color: "#6b7280" }}>Loading day...</div> : !day ? (
         <div className="chart-card flex flex-col gap-3 items-start">
-          <div className="text-sm" style={{ color: "#a3a3a3" }}>No entry exists for {branch?.name} on {dmy(date)}.</div>
+          <div className="text-sm" style={{ color: "#9aa0a8" }}>No entry exists for {branch?.name} on {dmy(date)}.</div>
           {summary?.opening_cash != null && (
-            <div className="text-xs" style={{ color: "#636363" }}>Opening cash will be {fmtK(summary.opening_cash)} (closing count of {dmy(summary.opening_from_date)}).</div>
+            <div className="text-xs" style={{ color: "#6b7280" }}>Opening cash will be {fmtK(summary.opening_cash)} (closing count of {dmy(summary.opening_from_date)}).</div>
           )}
           {editable ? <button className="btn btn-green" onClick={startDay} disabled={saving}>Start this day</button>
-            : <div className="text-xs" style={{ color: "#f87171" }}>This date is outside your edit window. Ask the owner to open it.</div>}
+            : <div className="text-xs" style={{ color: "#d9534f" }}>This date is outside your edit window. Ask the owner to open it.</div>}
         </div>
       ) : (
         <div className="grid gap-4" style={{ gridTemplateColumns: "minmax(0,1fr) 320px" }}>
@@ -422,31 +437,31 @@ export default function DailyEntry() {
                 return (
                   <div className="chart-card" key={k}>
                     <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                      <div className="h2" style={{ marginBottom: 0 }}>{sh === "day" ? "☀️ Day shift" : "🌙 Night shift"}{sections.length > 1 ? ` • ${sec.name}` : ""}</div>
+                      <div className="h2" style={{ marginBottom: 0, border: 0, padding: 0 }}>{sh === "day" ? "Day shift" : "Night shift"}{sections.length > 1 ? ` • ${sec.name}` : ""}</div>
                       <div className="flex items-center gap-3">
                         {sh === "night" && (
-                          <label className="text-[11px] flex items-center gap-1.5 cursor-pointer" style={{ color: "#a3a3a3" }}>
+                          <label className="text-[11px] flex items-center gap-1.5 cursor-pointer" style={{ color: "#9aa0a8" }}>
                             <input type="checkbox" checked={!!rmode} onChange={() => toggleReadings(sec)} disabled={!editable} />
                             Enter end-of-day cumulative readings
                           </label>
                         )}
-                        <div className="text-[12px]" style={{ color: "#a3a3a3" }}>Cash revenue: <b style={{ color: entryCash(e) < 0 ? "#f87171" : "#4ade80" }}>{fmtK(entryCash(e))}</b></div>
+                        <div className="text-[12px]" style={{ color: "#9aa0a8" }}>Cash revenue: <b style={{ color: entryCash(e) < 0 ? "#d9534f" : "#3fb67a" }}>{fmtK(entryCash(e))}</b></div>
                       </div>
                     </div>
                     <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
                       <div style={{ gridColumn: "span 2" }}>
                         <label className="lbl">Manager on duty</label>
-                        <EmployeeSelect employees={employees} value={e.manager_employee_id} onChange={(v) => setField(sec, sh, "manager_employee_id", v || null)} disabled={!editable} placeholder="Select manager" />
+                        <EmployeeSelect employees={managers.length ? managers : employees} value={e.manager_employee_id} onChange={(v) => setField(sec, sh, "manager_employee_id", v || null)} disabled={!editable} placeholder="Select manager" />
                       </div>
                     </div>
                     <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
                       {MONEY.map((f) => (
                         <div key={f}>
-                          <label className="lbl" style={{ color: f.startsWith("lb") ? "#22d3ee" : f.startsWith("l6") ? "#a78bfa" : "#636363" }}>{FIELD_LABEL[f]}</label>
+                          <label className="lbl">{FIELD_LABEL[f]}</label>
                           {rmode ? (
                             <div>
                               <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="cumulative" value={readings[k]?.[f] ?? ""} onChange={(ev) => setReading(sec, f, ev.target.value)} disabled={!editable} />
-                              <div className="text-[10px] text-right mt-0.5" style={{ color: "#636363" }}>shift = {fmtK(e[f])}</div>
+                              <div className="text-[10px] text-right mt-0.5" style={{ color: "#6b7280" }}>shift = {fmtK(e[f])}</div>
                             </div>
                           ) : (
                             <input type="number" step="0.01" min="0" className="inp inp-num" value={e[f] === 0 ? "" : e[f]} placeholder="0.00" onChange={(ev) => setField(sec, sh, f, ev.target.value === "" ? 0 : ev.target.value)} disabled={!editable} />
@@ -454,26 +469,45 @@ export default function DailyEntry() {
                         </div>
                       ))}
                     </div>
-                    <div className="flex gap-4 flex-wrap mt-2 text-[11px]" style={{ color: "#636363" }}>
+                    <div className="flex gap-4 flex-wrap mt-2 text-[11px]" style={{ color: "#6b7280" }}>
                       <span>Sports net {fmtK(num(e.sport_tickets) + num(e.sport_deposits) - num(e.sport_payouts) - num(e.sport_withdrawals))}</span>
-                      <span style={{ color: "#22d3ee" }}>Lucky Balls {fmtK(num(e.lb_in) - num(e.lb_out))}</span>
-                      <span style={{ color: "#a78bfa" }}>Lucky 6 {fmtK(num(e.l6_in) - num(e.l6_out))}</span>
+                      <span>Lucky Balls {fmtK(num(e.lb_in) - num(e.lb_out))}</span>
+                      <span>Lucky 6 {fmtK(num(e.l6_in) - num(e.l6_out))}</span>
                     </div>
                     {/* cashiers */}
-                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid #1c1c1c" }}>
+                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="lbl" style={{ marginBottom: 0 }}>Cashiers on duty</span>
-                        {editable && <button className="btn btn-sm" onClick={() => addAssignment(sec, sh)}>+ Add cashier</button>}
+                        <span className="lbl" style={{ marginBottom: 0 }}>Cashiers on duty{sh === "night" ? " (maximum 2)" : ""}</span>
+                        <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{(assign[k] || []).filter((a) => a.employee_id).length} selected</span>
                       </div>
-                      {(assign[k] || []).length === 0 && <div className="text-[11px]" style={{ color: "#636363" }}>None assigned.</div>}
-                      {(assign[k] || []).map((a, i) => (
-                        <div key={i} className="grid gap-2 mb-2" style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr) 110px 32px" }}>
-                          <EmployeeSelect employees={employees} value={a.employee_id} onChange={(v) => setAssignment(sec, sh, i, "employee_id", v)} disabled={!editable} placeholder="Cashier" />
-                          <select className="inp" value={a.counter_role} onChange={(ev) => setAssignment(sec, sh, i, "counter_role", ev.target.value)} disabled={!editable}>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {cashiers.map((c) => {
+                          const list = assign[k] || [];
+                          const on = list.some((a) => a.employee_id === c.id);
+                          const full = sh === "night" && !on && list.filter((a) => a.employee_id).length >= 2;
+                          return (
+                            <button key={c.id} type="button" className={`chip ${on ? "chip-active" : ""}`} disabled={!editable || full}
+                              style={{ opacity: full ? 0.4 : 1 }}
+                              onClick={() => {
+                                setAssign((p) => {
+                                  const l = [...(p[k] || [])];
+                                  const i = l.findIndex((a) => a.employee_id === c.id);
+                                  if (i >= 0) l.splice(i, 1); else l.push({ employee_id: c.id, counter_role: l.some((a) => a.counter_role === "sports") ? "lucky_balls" : "sports", float_issued: 0 });
+                                  return { ...p, [k]: l };
+                                });
+                                setDirty(true);
+                              }}>{c.full_name}</button>
+                          );
+                        })}
+                        {cashiers.length === 0 && <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>No cashiers on this branch in payroll.</span>}
+                      </div>
+                      {(assign[k] || []).filter((a) => a.employee_id).map((a, i) => (
+                        <div key={a.employee_id} className="grid gap-2 mb-1.5 items-center" style={{ gridTemplateColumns: "minmax(0,2fr) minmax(0,1fr) 120px" }}>
+                          <span className="text-[12px]">{empName(a.employee_id)}</span>
+                          <select className="inp" value={a.counter_role} onChange={(ev) => setAssignment(sec, sh, (assign[k] || []).indexOf(a), "counter_role", ev.target.value)} disabled={!editable}>
                             {COUNTER_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
                           </select>
-                          <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="Float" value={a.float_issued || ""} onChange={(ev) => setAssignment(sec, sh, i, "float_issued", ev.target.value)} disabled={!editable} />
-                          {editable ? <button className="btn btn-sm btn-red" onClick={() => removeAssignment(sec, sh, i)}>✕</button> : <span />}
+                          <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="Float issued" value={a.float_issued || ""} onChange={(ev) => setAssignment(sec, sh, (assign[k] || []).indexOf(a), "float_issued", ev.target.value)} disabled={!editable} />
                         </div>
                       ))}
                     </div>
@@ -484,11 +518,11 @@ export default function DailyEntry() {
 
             {/* Expenses */}
             <div className="chart-card">
-              <div className="h2">💸 Expenses <span style={{ color: "#a3a3a3", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• total {fmtK(live.exp)}</span></div>
+              <div className="h2">Expenses <span style={{ color: "#9aa0a8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• total {fmtK(live.exp)}</span></div>
               {expenses.length > 0 && (
                 <table className="tbl mb-3"><thead><tr><th>Category</th><th>Specification</th><th>Paid to</th><th>Shift</th><th className="num">Amount</th><th /></tr></thead>
                   <tbody>{expenses.map((x) => { const c = categories.find((cc) => cc.id === x.category_id); return (
-                    <tr key={x.id}><td>{c?.name}{c?.flag_for_owner && <span title="Flagged for owner" style={{ color: "#fbbf24" }}> ⚑</span>}</td><td>{x.description}</td><td style={{ color: "#a3a3a3" }}>{x.paid_to}</td><td style={{ color: "#636363" }}>{x.shift || ""}</td><td className="num">{fmtK(x.amount)}</td>
+                    <tr key={x.id}><td>{c?.name}{c?.flag_for_owner && <span title="Flagged for owner" style={{ color: "#c9a227" }}> ⚑</span>}</td><td>{x.description}</td><td style={{ color: "#9aa0a8" }}>{x.paid_to}</td><td style={{ color: "#6b7280" }}>{x.shift || ""}</td><td className="num">{fmtK(x.amount)}</td>
                       <td className="num">{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_expenses", x.id)}>✕</button>}</td></tr>); })}</tbody></table>
               )}
               {editable && (
@@ -508,11 +542,11 @@ export default function DailyEntry() {
 
             {/* Cash transfers */}
             <div className="chart-card">
-              <div className="h2">📲 Cash sent / received <span style={{ color: "#a3a3a3", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• sent {fmtK(live.sent)} • received {fmtK(live.recv)}</span></div>
+              <div className="h2">Cash sent / received <span style={{ color: "#9aa0a8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• sent {fmtK(live.sent)} • received {fmtK(live.recv)}</span></div>
               {transfers.length > 0 && (
                 <table className="tbl mb-3"><thead><tr><th>Direction</th><th>Counterparty</th><th>Number</th><th>By</th><th>Time</th><th className="num">Amount</th><th /></tr></thead>
                   <tbody>{transfers.map((t) => { const cp = counterparties.find((c) => c.id === t.counterparty_id); return (
-                    <tr key={t.id}><td style={{ color: t.direction === "sent" ? "#f87171" : "#4ade80" }}>{t.direction === "sent" ? "Sent from shop" : "Received by shop"}</td><td>{cp?.name || t.counterparty_text}</td><td style={{ color: "#a3a3a3" }}>{t.mobile_number || cp?.mobile_number}</td><td style={{ color: "#a3a3a3" }}>{empName(t.done_by_employee_id)}</td><td style={{ color: "#636363" }}>{fmtTime(t.done_at)}</td><td className="num">{fmtK(t.amount)}</td>
+                    <tr key={t.id}><td style={{ color: t.direction === "sent" ? "#d9534f" : "#3fb67a" }}>{t.direction === "sent" ? "Sent from shop" : "Received by shop"}</td><td>{cp?.name || t.counterparty_text}</td><td style={{ color: "#9aa0a8" }}>{t.mobile_number || cp?.mobile_number}</td><td style={{ color: "#9aa0a8" }}>{empName(t.done_by_employee_id)}</td><td style={{ color: "#6b7280" }}>{fmtTime(t.done_at)}</td><td className="num">{fmtK(t.amount)}</td>
                       <td className="num">{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_cash_transfers", t.id)}>✕</button>}</td></tr>); })}</tbody></table>
               )}
               {editable && (
@@ -536,13 +570,13 @@ export default function DailyEntry() {
 
             {/* Shortages */}
             <div className="chart-card">
-              <div className="h2">⚠️ Staff shortages <span style={{ color: "#a3a3a3", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• today {fmtK(live.sh)}</span></div>
+              <div className="h2">Staff shortages <span style={{ color: "#9aa0a8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• today {fmtK(live.sh)}</span></div>
               {shortages.length > 0 && (
                 <table className="tbl mb-3"><thead><tr><th>Staff</th><th>Reason</th><th>Note</th><th>Resolution</th><th className="num">Amount</th><th /></tr></thead>
                   <tbody>{shortages.map((s) => (
-                    <tr key={s.id}><td>{s.employee_id ? empName(s.employee_id) : <span style={{ color: "#fbbf24" }}>{s.employee_text} (unmatched)</span>}</td><td>{reasons.find((r) => r.id === s.reason_id)?.name}</td><td style={{ color: "#a3a3a3" }}>{s.note}</td>
-                      <td style={{ color: s.resolution === "cash_repaid" ? "#4ade80" : "#a3a3a3" }}>{s.resolution === "payroll" ? "Deduct from pay" : s.resolution === "cash_repaid" ? `Repaid ${fmtK(s.repaid_amount)}` : "Written off"}{s.payroll_synced_at ? " • synced" : ""}</td>
-                      <td className="num" style={{ color: "#f87171" }}>{fmtK(s.amount)}</td>
+                    <tr key={s.id}><td>{s.employee_id ? empName(s.employee_id) : <span style={{ color: "#c9a227" }}>{s.employee_text} (unmatched)</span>}</td><td>{reasons.find((r) => r.id === s.reason_id)?.name}</td><td style={{ color: "#9aa0a8" }}>{s.note}</td>
+                      <td style={{ color: s.resolution === "cash_repaid" ? "#3fb67a" : "#9aa0a8" }}>{s.resolution === "payroll" ? "Deduct from pay" : s.resolution === "cash_repaid" ? `Repaid ${fmtK(s.repaid_amount)}` : "Written off"}{s.payroll_synced_at ? " • synced" : ""}</td>
+                      <td className="num" style={{ color: "#d9534f" }}>{fmtK(s.amount)}</td>
                       <td className="num">{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_shortages", s.id)}>✕</button>}</td></tr>))}</tbody></table>
               )}
               {editable && (
@@ -561,27 +595,27 @@ export default function DailyEntry() {
                 </div>
               )}
               {live.variance != null && live.variance < -threshold && editable && (
-                <div className="mt-2 text-[11px]" style={{ color: "#fbbf24" }}>
+                <div className="mt-2 text-[11px]" style={{ color: "#c9a227" }}>
                   Cash is short by {fmtK(-live.variance)}. <button className="btn btn-sm" onClick={() => setFs({ ...fs, amount: String(r2(-live.variance!)) })}>Use this amount</button>
                 </div>
               )}
               {outstanding.length > 0 && (
-                <div className="mt-3 pt-3" style={{ borderTop: "1px solid #1c1c1c" }}>
+                <div className="mt-3 pt-3" style={{ borderTop: "1px solid #181c21" }}>
                   <div className="lbl">Outstanding shortages from earlier days (not yet repaid in cash)</div>
                   <table className="tbl"><tbody>{outstanding.map((s) => (
-                    <tr key={s.id}><td style={{ color: "#636363" }}>{dmy(s.shortage_date)}</td><td>{s.employee_id ? empName(s.employee_id) : s.employee_text}</td><td style={{ color: "#a3a3a3" }}>{s.note}</td><td className="num">{fmtK(s.amount)}</td>
-                      <td className="num">{editable && <button className="btn btn-sm" onClick={async () => { const { error } = await supabase.rpc("rev_mark_repaid", { p_shortage_id: s.id, p_repaid_day_id: day.id }); if (error) setMsg({ type: "err", text: error.message }); else loadDay(); }}>Repaid in cash today</button>}</td></tr>))}</tbody></table>
+                    <tr key={s.id}><td style={{ color: "#6b7280" }}>{dmy(s.shortage_date)}</td><td>{s.employee_id ? empName(s.employee_id) : s.employee_text}</td><td style={{ color: "#9aa0a8" }}>{s.note}</td><td className="num">{fmtK(s.amount)}</td>
+                      <td className="num">{editable && <button className="btn btn-sm" onClick={async () => { const { error } = await supabase.rpc("rev_mark_repaid", { p_shortage_id: s.id, p_repaid_day_id: day.id }); if (error) setMsg({ type: "err", text: error.message }); else refreshLists(); }}>Repaid in cash today</button>}</td></tr>))}</tbody></table>
                 </div>
               )}
-              {Number(summary?.repaid || 0) > 0 && <div className="mt-2 text-[11px]" style={{ color: "#4ade80" }}>Cash repaid into till today: {fmtK(summary?.repaid)}</div>}
+              {Number(summary?.repaid || 0) > 0 && <div className="mt-2 text-[11px]" style={{ color: "#3fb67a" }}>Cash repaid into till today: {fmtK(summary?.repaid)}</div>}
             </div>
 
             {/* Advances + Fines */}
             <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
               <div className="chart-card">
-                <div className="h2">🤝 Staff advances <span style={{ color: "#a3a3a3", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• {fmtK(live.adv)}</span></div>
+                <div className="h2">Staff advances <span style={{ color: "#9aa0a8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• {fmtK(live.adv)}</span></div>
                 {advances.map((a) => (
-                  <div key={a.id} className="kv"><span>{empName(a.employee_id)} <span style={{ color: "#636363" }}>{a.note}</span></span><span className="flex gap-2 items-center">{fmtK(a.amount)}{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_advances", a.id)}>✕</button>}</span></div>
+                  <div key={a.id} className="kv"><span>{empName(a.employee_id)} <span style={{ color: "#6b7280" }}>{a.note}</span></span><span className="flex gap-2 items-center">{fmtK(a.amount)}{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_advances", a.id)}>✕</button>}</span></div>
                 ))}
                 {editable && (
                   <div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr) 100px auto" }}>
@@ -593,9 +627,9 @@ export default function DailyEntry() {
                 )}
               </div>
               <div className="chart-card">
-                <div className="h2">🚫 Staff fines <span style={{ color: "#a3a3a3", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• not cash</span></div>
+                <div className="h2">Staff fines <span style={{ color: "#9aa0a8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• not cash</span></div>
                 {fines.map((f) => (
-                  <div key={f.id} className="kv"><span>{empName(f.employee_id)} <span style={{ color: "#636363" }}>{f.reason}</span></span><span className="flex gap-2 items-center">{fmtK(f.amount)}{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_fines", f.id)}>✕</button>}</span></div>
+                  <div key={f.id} className="kv"><span>{empName(f.employee_id)} <span style={{ color: "#6b7280" }}>{f.reason}</span></span><span className="flex gap-2 items-center">{fmtK(f.amount)}{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_fines", f.id)}>✕</button>}</span></div>
                 ))}
                 {editable && (
                   <div className="grid gap-2 mt-2" style={{ gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr) 100px auto" }}>
@@ -611,7 +645,7 @@ export default function DailyEntry() {
             {/* Cash count */}
             <div className="chart-card">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
-                <div className="h2" style={{ marginBottom: 0 }}>🧮 Closing cash count <span style={{ color: "#a3a3a3", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• counted the next morning</span></div>
+                <div className="h2" style={{ marginBottom: 0, border: 0, padding: 0 }}>Closing cash count <span style={{ color: "#9aa0a8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• counted the next morning</span></div>
                 {!count && editable && <button className="btn btn-sm btn-green" onClick={() => { setCount({ ...blankCount(day.id), counted_at: new Date().toISOString() }); setDirty(true); }}>Enter count</button>}
               </div>
               {count && (
@@ -621,7 +655,7 @@ export default function DailyEntry() {
                       <div key={d.key}>
                         <label className="lbl">{d.label}</label>
                         <input type="number" min="0" step="1" className="inp inp-num" placeholder="0" value={(count as any)[d.key] || ""} onChange={(e) => { setCount({ ...count, [d.key]: e.target.value === "" ? 0 : parseInt(e.target.value) || 0 }); setDirty(true); }} disabled={!editable} />
-                        <div className="text-[10px] text-right" style={{ color: "#636363" }}>{fmtK(d.value * (Number((count as any)[d.key]) || 0))}</div>
+                        <div className="text-[10px] text-right" style={{ color: "#6b7280" }}>{fmtK(d.value * (Number((count as any)[d.key]) || 0))}</div>
                       </div>
                     ))}
                     <div>
@@ -635,7 +669,7 @@ export default function DailyEntry() {
                     <div><label className="lbl">Witness</label><EmployeeSelect employees={employees} value={count.witness_employee_id} onChange={(v) => { setCount({ ...count, witness_employee_id: v || null }); setDirty(true); }} disabled={!editable} placeholder="Optional" /></div>
                     <div><label className="lbl">Counted at</label><input type="datetime-local" className="inp" value={toLocalInput(count.counted_at)} onChange={(e) => { setCount({ ...count, counted_at: fromLocalInput(e.target.value) }); setDirty(true); }} disabled={!editable} /></div>
                   </div>
-                  <div className="mt-3 text-[13px]">Counted total: <b style={{ color: "#facc15" }}>{fmtK(countTotal(count))}</b></div>
+                  <div className="mt-3 text-[13px]">Counted total: <b style={{ color: "#c9a227" }}>{fmtK(countTotal(count))}</b></div>
                 </>
               )}
             </div>
@@ -643,12 +677,12 @@ export default function DailyEntry() {
             {/* Adjustments (owner) */}
             {(owner || adjustments.length > 0) && (
               <div className="chart-card">
-                <div className="h2">🧾 Adjustments <span style={{ color: "#a3a3a3", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• owner approval required</span></div>
+                <div className="h2">Adjustments <span style={{ color: "#9aa0a8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• owner approval required</span></div>
                 {adjustments.map((a) => (
                   <div key={a.id} className="kv">
-                    <span>{a.reason.replace(/_/g, " ")} <span style={{ color: "#636363" }}>{a.note}</span> {a.approved_at ? <span style={{ color: "#4ade80" }}>approved by {a.approved_by}</span> : <span style={{ color: "#fbbf24" }}>pending</span>}</span>
+                    <span>{a.reason.replace(/_/g, " ")} <span style={{ color: "#6b7280" }}>{a.note}</span> {a.approved_at ? <span style={{ color: "#3fb67a" }}>approved by {a.approved_by}</span> : <span style={{ color: "#c9a227" }}>pending</span>}</span>
                     <span className="flex gap-2 items-center">{fmtSigned(a.amount)}
-                      {owner && !a.approved_at && <button className="btn btn-sm btn-green" onClick={async () => { const { error } = await supabase.from("rev_adjustments").update({ approved_by: logName || email, approved_at: new Date().toISOString() }).eq("id", a.id); if (error) setMsg({ type: "err", text: error.message }); else loadDay(); }}>Approve</button>}
+                      {owner && !a.approved_at && <button className="btn btn-sm btn-green" onClick={async () => { const { error } = await supabase.from("rev_adjustments").update({ approved_by: logName || email, approved_at: new Date().toISOString() }).eq("id", a.id); if (error) setMsg({ type: "err", text: error.message }); else refreshLists(); }}>Approve</button>}
                       {(owner || !a.approved_at) && editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_adjustments", a.id)}>✕</button>}
                     </span>
                   </div>
@@ -667,13 +701,13 @@ export default function DailyEntry() {
                     }}>{owner ? "Add and approve" : "Propose"}</button>
                   </div>
                 )}
-                <div className="text-[10px] mt-2" style={{ color: "#636363" }}>Positive raises expected cash (e.g. test tickets that produced no cash are entered as a negative amount on the revenue they inflated).</div>
+                <div className="text-[10px] mt-2" style={{ color: "#6b7280" }}>Positive raises expected cash (e.g. test tickets that produced no cash are entered as a negative amount on the revenue they inflated).</div>
               </div>
             )}
 
             {/* Notes + owner override */}
             <div className="chart-card">
-              <div className="h2">📝 Notes</div>
+              <div className="h2">Notes</div>
               <textarea className="inp" rows={2} placeholder="Anything unusual today (overage explanation, incidents, client refunds...)" value={notes} onChange={(e) => { setNotes(e.target.value); setDirty(true); }} disabled={!editable} />
               {owner && (
                 <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: "160px minmax(0,1fr)" }}>
@@ -688,30 +722,30 @@ export default function DailyEntry() {
           <div className="flex flex-col gap-3" style={{ position: "sticky", top: 16, alignSelf: "start" }}>
             <div className="chart-card">
               <div className="h2">Live reconciliation</div>
-              <div className="kv"><span style={{ color: "#a3a3a3" }}>Opening cash {summary?.opening_from_date ? <span style={{ color: "#636363" }}>({dmy(summary.opening_from_date)})</span> : ""}</span><span>{fmtK(live.opening)}</span></div>
+              <div className="kv"><span style={{ color: "#9aa0a8" }}>Opening cash {summary?.opening_from_date ? <span style={{ color: "#6b7280" }}>({dmy(summary.opening_from_date)})</span> : ""}</span><span>{fmtK(live.opening)}</span></div>
               {summary?.opening_from_date && summary.opening_from_date !== addDays(date, -1) && !summary.opening_cash_override && (
-                <div className="text-[10px] mb-1" style={{ color: "#fbbf24" }}>Previous day has no closing count. Opening carried from {dmy(summary.opening_from_date)}.</div>
+                <div className="text-[10px] mb-1" style={{ color: "#c9a227" }}>Previous day has no closing count. Opening carried from {dmy(summary.opening_from_date)}.</div>
               )}
-              <div className="kv"><span style={{ color: "#a3a3a3" }}>+ Cash revenue</span><span style={{ color: live.cash < 0 ? "#f87171" : "#4ade80" }}>{fmtK(live.cash)}</span></div>
-              <div className="kv"><span style={{ color: "#a3a3a3" }}>- Expenses</span><span>{fmtK(live.exp)}</span></div>
-              <div className="kv"><span style={{ color: "#a3a3a3" }}>- Sent from shop</span><span>{fmtK(live.sent)}</span></div>
-              <div className="kv"><span style={{ color: "#a3a3a3" }}>+ Received by shop</span><span>{fmtK(live.recv)}</span></div>
-              <div className="kv"><span style={{ color: "#a3a3a3" }}>- Staff shortages</span><span>{fmtK(live.sh)}</span></div>
-              {live.repaid > 0 && <div className="kv"><span style={{ color: "#a3a3a3" }}>+ Shortages repaid</span><span>{fmtK(live.repaid)}</span></div>}
-              {live.adv > 0 && <div className="kv"><span style={{ color: "#a3a3a3" }}>- Advances</span><span>{fmtK(live.adv)}</span></div>}
-              {live.adj !== 0 && <div className="kv"><span style={{ color: "#a3a3a3" }}>± Adjustments</span><span>{fmtSigned(live.adj)}</span></div>}
-              <div className="kv mt-1 pt-1" style={{ borderTop: "1px solid #2a2a2a", fontWeight: 600 }}><span>Expected closing</span><span style={{ color: "#facc15" }}>{fmtK(live.expected)}</span></div>
-              <div className="kv" style={{ fontWeight: 600 }}><span>Counted closing</span><span>{live.counted == null ? <span style={{ color: "#636363" }}>not counted</span> : fmtK(live.counted)}</span></div>
+              <div className="kv"><span style={{ color: "#9aa0a8" }}>+ Cash revenue</span><span style={{ color: live.cash < 0 ? "#d9534f" : "#3fb67a" }}>{fmtK(live.cash)}</span></div>
+              <div className="kv"><span style={{ color: "#9aa0a8" }}>- Expenses</span><span>{fmtK(live.exp)}</span></div>
+              <div className="kv"><span style={{ color: "#9aa0a8" }}>- Sent from shop</span><span>{fmtK(live.sent)}</span></div>
+              <div className="kv"><span style={{ color: "#9aa0a8" }}>+ Received by shop</span><span>{fmtK(live.recv)}</span></div>
+              <div className="kv"><span style={{ color: "#9aa0a8" }}>- Staff shortages</span><span>{fmtK(live.sh)}</span></div>
+              {live.repaid > 0 && <div className="kv"><span style={{ color: "#9aa0a8" }}>+ Shortages repaid</span><span>{fmtK(live.repaid)}</span></div>}
+              {live.adv > 0 && <div className="kv"><span style={{ color: "#9aa0a8" }}>- Advances</span><span>{fmtK(live.adv)}</span></div>}
+              {live.adj !== 0 && <div className="kv"><span style={{ color: "#9aa0a8" }}>± Adjustments</span><span>{fmtSigned(live.adj)}</span></div>}
+              <div className="kv mt-1 pt-1" style={{ borderTop: "1px solid #23272e", fontWeight: 600 }}><span>Expected closing</span><span style={{ color: "#c9a227" }}>{fmtK(live.expected)}</span></div>
+              <div className="kv" style={{ fontWeight: 600 }}><span>Counted closing</span><span>{live.counted == null ? <span style={{ color: "#6b7280" }}>not counted</span> : fmtK(live.counted)}</span></div>
               <div className="kv" style={{ fontWeight: 700, fontSize: 14 }}>
                 <span>Variance</span>
-                <span style={{ color: live.variance == null ? "#636363" : Math.abs(live.variance) <= threshold ? "#4ade80" : "#f87171" }}>
+                <span style={{ color: live.variance == null ? "#6b7280" : Math.abs(live.variance) <= threshold ? "#3fb67a" : "#d9534f" }}>
                   {live.variance == null ? "—" : fmtSigned(live.variance)}
                 </span>
               </div>
               {live.variance != null && Math.abs(live.variance) > threshold && (
-                <div className="text-[10px] mt-1" style={{ color: "#f87171" }}>Over the K{threshold} threshold. {live.variance < 0 ? "Allocate to cashier(s) as a shortage." : "Explain in notes."}</div>
+                <div className="text-[10px] mt-1" style={{ color: "#d9534f" }}>Over the K{threshold} threshold. {live.variance < 0 ? "Allocate to cashier(s) as a shortage." : "Explain in notes."}</div>
               )}
-              <div className="kv mt-2 pt-2" style={{ borderTop: "1px solid #2a2a2a" }}><span style={{ color: "#a3a3a3" }}>Net after expenses</span><span>{fmtK(live.cash - live.exp)}</span></div>
+              <div className="kv mt-2 pt-2" style={{ borderTop: "1px solid #23272e" }}><span style={{ color: "#9aa0a8" }}>Net after expenses</span><span>{fmtK(live.cash - live.exp)}</span></div>
             </div>
 
             <div className="chart-card flex flex-col gap-2">
@@ -725,13 +759,13 @@ export default function DailyEntry() {
                   )}
                 </>
               ) : (
-                <div className="text-[11px]" style={{ color: "#f87171" }}>🔒 Locked. Managers can edit today and yesterday only. The owner can edit any day or open a window.</div>
+                <div className="text-[11px]" style={{ color: "#d9534f" }}>Locked. Managers can edit today and yesterday only. The owner can edit any day or open a window.</div>
               )}
-              {day.submitted_at && <div className="text-[10px]" style={{ color: "#636363" }}>Submitted by {day.submitted_by} on {fmtDateTime(day.submitted_at)}</div>}
-              {dirty && <div className="text-[10px]" style={{ color: "#fbbf24" }}>Unsaved changes in figures, cashiers, count or notes.</div>}
+              {day.submitted_at && <div className="text-[10px]" style={{ color: "#6b7280" }}>Submitted by {day.submitted_by} on {fmtDateTime(day.submitted_at)}</div>}
+              {dirty && <div className="text-[10px]" style={{ color: "#c9a227" }}>Unsaved changes in figures, cashiers, count or notes.</div>}
             </div>
 
-            <div className="chart-card text-[11px]" style={{ color: "#636363" }}>
+            <div className="chart-card text-[11px]" style={{ color: "#6b7280" }}>
               <div className="lbl">How to close a day</div>
               1. Enter each shift's figures and cashiers.<br />2. Add expenses and cash sent/received as they happen.<br />3. Next morning, enter the denomination count.<br />4. Explain or allocate any variance over K{threshold}.<br />5. Submit.
             </div>

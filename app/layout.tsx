@@ -4,6 +4,8 @@ import Nav from "@/components/Nav";
 import { getCurrentUser } from "@/lib/auth";
 import { AuthProvider } from "@/lib/auth-context";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "BwanaBet Revenue",
   description: "Daily store revenue system for BwanaBet Zambia",

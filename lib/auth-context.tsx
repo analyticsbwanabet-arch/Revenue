@@ -4,8 +4,13 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { createClient } from "@/lib/supabase/client";
 
 // Re-export supabase for client components that need it
-const supabaseClient = createClient();
-export const supabase = supabaseClient;
+// Created lazily so a build without env vars does not crash while prerendering
+let _client: ReturnType<typeof createClient> | null = null;
+function getClient() { if (!_client) _client = createClient(); return _client; }
+export const supabase = new Proxy({} as ReturnType<typeof createClient>, {
+  get(_t, prop) { const c = getClient() as any; const v = c[prop]; return typeof v === "function" ? v.bind(c) : v; },
+});
+const supabaseClient = supabase;
 
 interface AuthState {
   allowedBranchIds: string[] | null; // null = super admin (all branches)

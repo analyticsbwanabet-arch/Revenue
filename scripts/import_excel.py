@@ -70,6 +70,18 @@ def eval_simple(expr):
     except Exception: return None
 
 
+def as_date(v):
+    """Column A value -> date. Accepts real dates and typed text like 04/11/2026 or 04/112026."""
+    if isinstance(v, datetime.datetime): return v.date()
+    if isinstance(v, datetime.date): return v
+    if isinstance(v, str):
+        m = re.fullmatch(r"\s*(\d{1,2})\s*/\s*(\d{1,2})\s*/?\s*(\d{4})\s*", v)
+        if m:
+            try: return datetime.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+            except ValueError: return None
+    return None
+
+
 def parse_in_out(formula, cached):
     """Lucky Balls: '=in-out'. Returns (in, out, flag)."""
     if formula is None: return 0.0, 0.0, None
@@ -80,10 +92,13 @@ def parse_in_out(formula, cached):
         if m: return float(m.group(1)), float(m.group(2)), None
         m = re.fullmatch(r"(\d+(?:\.\d+)?)", e)
         if m: return float(m.group(1)), 0.0, f"single number {e}"
-        # a-b+c... : take first two as in/out, report the remainder
-        m = re.match(r"(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)(.*)", e)
-        if m and m.group(3):
-            return float(m.group(1)), float(m.group(2)), f"extra terms '{m.group(3)}' dropped from '{formula}'"
+        # several terms (e.g. two cashiers typed as a-b+c-d): positive terms are IN, negative terms are OUT.
+        # The net equals the workbook figure exactly; the split is a best reading, so the day is flagged.
+        if re.fullmatch(r"[+-]?\d+(?:\.\d+)?(?:[+-]\d+(?:\.\d+)?)+", e):
+            terms = re.findall(r"[+-]?\d+(?:\.\d+)?", e)
+            tin = round(sum(float(t) for t in terms if not t.startswith("-")), 2)
+            tout = round(sum(-float(t) for t in terms if t.startswith("-")), 2)
+            return tin, tout, f"'{formula}' has {len(terms)} terms: positives summed as IN {tin}, negatives as OUT {tout}"
         v = eval_simple(formula)
         if v is not None:
             return (v, 0.0, f"could not split '{formula}', imported net {v} as IN") if v >= 0 else (0.0, -v, f"could not split '{formula}', imported net {v} as OUT")
@@ -187,11 +202,12 @@ def main():
     def rep(day, msg): report.append((day, msg))
 
     # ---- day blocks
-    dayrows = [r for r in range(1, wv.max_row + 1) if isinstance(V(r, "A"), datetime.datetime)]
+    dayrows = [r for r in range(3, wv.max_row + 1) if as_date(V(r, "A")) is not None]
+    textdates = [r for r in dayrows if not isinstance(V(r, "A"), datetime.datetime)]
     blocks = []
     for i, r in enumerate(dayrows):
         end = dayrows[i + 1] - 1 if i + 1 < len(dayrows) else wv.max_row
-        d = V(r, "A").date().isoformat()
+        d = as_date(V(r, "A")).isoformat()
         if a.dfrom and d < a.dfrom: continue
         if a.dto and d > a.dto: continue
         night = [x for x in range(r + 1, end + 1) if (F(x, "G") is not None and str(F(x, "G")).startswith("=")) or "NIGHT" in str(V(x, "A")).upper() or "NIGHT" in str(V(x, "C")).upper()]
@@ -225,7 +241,7 @@ def main():
         cur = None; shift = "day"
         for r in range(2, av.max_row + 1):
             A = av[f"A{r}"].value
-            if isinstance(A, datetime.datetime): cur = A.date().isoformat(); shift = "day"
+            if as_date(A) is not None: cur = as_date(A).isoformat(); shift = "day"
             elif A and "NIGHT" in str(A).upper(): shift = "night"
             name = av[f"D{r}"].value
             if not cur or not name: continue
@@ -257,6 +273,9 @@ end $$;""")
     cp = lambda name: f"(select id from rev_counterparties where name = {q(name)} limit 1)"
 
     first_day = True
+    for r in textdates:
+        dd = as_date(V(r, "A")).isoformat()
+        if (not a.dfrom or dd >= a.dfrom) and (not a.dto or dd <= a.dto): rep(dd, f"date typed as text {V(r, 'A')!r} in A{r}, read as {dd}")
     for d, r, end, night in blocks:
         rows = range(r, end + 1)
         notes = []; flags = []
@@ -372,7 +391,8 @@ end $$;""")
             day_sql.append(f"""update rev_days set opening_cash_override = (
                 select s.counted_closing - (s.cash_revenue - s.expenses - s.sent + s.received - s.shortages + s.repaid - s.advances + s.adjustments)
                 from rev_day_summary s where s.id = {dayid}), opening_cash_override_note = 'Back-calculated at import (no earlier day available)'
-              where id = {dayid} and exists (select 1 from rev_cash_counts c where c.day_id = {dayid});""")
+              where id = {dayid} and exists (select 1 from rev_cash_counts c where c.day_id = {dayid})
+                and not exists (select 1 from rev_days p join rev_cash_counts pc on pc.day_id = p.id where p.branch_id = b and p.day_date < {q(d)});""")
             first_day = False
         sql.append(f"do $$ declare b uuid := (select id from branches where code = {q(a.branch)}); s uuid := (select id from rev_sections x where x.branch_id = (select id from branches where code = {q(a.branch)}) and x.code = {q(a.section)}); d uuid; e uuid; begin\n" + "\n".join(day_sql) + "\nend $$;")
     sql.append("commit;")

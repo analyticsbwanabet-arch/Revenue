@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useAuth, supabase } from "@/lib/auth-context";
 import { fmtK, fmtSigned, dmy, todayIso, addDays, weekday, r2, num, DENOMS, COUNTER_ROLES, fmtTime, fmtDateTime, toLocalInput, fromLocalInput } from "@/lib/helpers";
 import EmployeeSelect from "@/components/EmployeeSelect";
+import TimeSelect from "@/components/TimeSelect";
 import type {
   Branch, Employee, Section, ExpenseCategory, Counterparty, ShortageReason, RevDay, ShiftEntry, Assignment,
   Expense, Transfer, CashCount, Shortage, Advance, Fine, Adjustment, DaySummary, WhoAmI,
@@ -141,7 +142,7 @@ export default function DailyEntry() {
       supabase.from("rev_fines").select("*").eq("day_id", d.id).order("created_at"),
       supabase.from("rev_adjustments").select("*").eq("day_id", d.id).order("created_at"),
       supabase.from("rev_cash_counts").select("*").eq("day_id", d.id).maybeSingle(),
-      supabase.from("rev_shortages").select("*").eq("branch_id", branchId).eq("resolution", "payroll").lt("shortage_date", date).gte("shortage_date", addDays(date, -45)).order("shortage_date", { ascending: false }),
+      supabase.from("rev_shortages").select("*").eq("branch_id", branchId).eq("resolution", "payroll").lt("shortage_date", date).gte("shortage_date", date.slice(0, 7) + "-01").order("shortage_date", { ascending: false }),
     ]);
     setSummary(sm as DaySummary);
     const em: Record<Key, ShiftEntry> = {}; const am: Record<Key, Assignment[]> = {}; const rm: Record<Key, any> = {}; const rmode: Record<Key, boolean> = {};
@@ -170,7 +171,7 @@ export default function DailyEntry() {
       supabase.from("rev_advances").select("*").eq("day_id", day.id).order("created_at"),
       supabase.from("rev_fines").select("*").eq("day_id", day.id).order("created_at"),
       supabase.from("rev_adjustments").select("*").eq("day_id", day.id).order("created_at"),
-      supabase.from("rev_shortages").select("*").eq("branch_id", branchId).eq("resolution", "payroll").lt("shortage_date", date).gte("shortage_date", addDays(date, -45)).order("shortage_date", { ascending: false }),
+      supabase.from("rev_shortages").select("*").eq("branch_id", branchId).eq("resolution", "payroll").lt("shortage_date", date).gte("shortage_date", date.slice(0, 7) + "-01").order("shortage_date", { ascending: false }),
     ]);
     if (sm) setSummary(sm as DaySummary);
     setExpenses(ex || []); setTransfers(tr || []); setShortages(sh || []); setAdvances(ad || []); setFines(fi || []); setAdjustments(aj || []); setOutstanding(os || []);
@@ -355,6 +356,22 @@ export default function DailyEntry() {
 
   // ---------- forms state ----------
   const [fx, setFx] = useState({ category_id: "", description: "", amount: "", shift: "", paid_to: "" });
+  const [editExpId, setEditExpId] = useState<string | null>(null);
+  const blankFx = { category_id: "", description: "", amount: "", shift: "", paid_to: "" };
+  const startEditExpense = (x: Expense) => {
+    setEditExpId(x.id);
+    setFx({ category_id: x.category_id, description: x.description, amount: String(x.amount), shift: x.shift || "", paid_to: x.paid_to || "" });
+  };
+  const saveExpense = async () => {
+    if (!day) return;
+    const row = { category_id: fx.category_id, description: fx.description.trim(), amount: r2(num(fx.amount)), shift: fx.shift || null, paid_to: fx.paid_to || null };
+    if (editExpId) {
+      const { error } = await supabase.from("rev_expenses").update(row).eq("id", editExpId);
+      if (error) { setMsg({ type: "err", text: error.message }); return; }
+      await refreshLists();
+    } else if (!(await insertRow("rev_expenses", { ...row, day_id: day.id, entered_by: email }))) return;
+    setEditExpId(null); setFx(blankFx);
+  };
   const [ft, setFt] = useState({ direction: "sent", amount: "", counterparty_id: "", mobile_number: "", done_by_employee_id: "", time: "" });
   const [fs, setFs] = useState({ employee_id: "", amount: "", reason_id: "", note: "", shift_entry_id: "" });
   const [fa, setFa] = useState({ employee_id: "", amount: "", note: "" });
@@ -372,7 +389,30 @@ export default function DailyEntry() {
   if (authLoading || !who) return <div className="text-sm" style={{ color: "#6b7280" }}>Loading...</div>;
   if (!branches.length) return <div className="text-sm" style={{ color: "#d9534f" }}>No branch assigned to this login.</div>;
 
-  const shiftEntriesForSelect = Object.entries(entries).filter(([, e]) => e.id);
+  const shiftOptions = sections.flatMap((sec) => (sec.shifts === "both" ? ["day", "night"] : [sec.shifts]).map((sh) => ({
+    key: key(sec.id, sh), section_id: sec.id, shift: sh as "day" | "night",
+    label: (sh === "day" ? "Day" : "Night") + (sections.length > 1 ? ` • ${sec.name}` : ""),
+  })));
+  const shiftLabel = (entryId: string | null) => {
+    if (!entryId) return "";
+    const e = Object.values(entries).find((x) => x.id === entryId);
+    return e ? shiftOptions.find((o) => o.key === key(e.section_id, e.shift))?.label || "" : "";
+  };
+  // A shortage can be tied to a shift before that shift's figures are saved: create the empty shift row if needed.
+  const ensureShiftEntry = async (k: string): Promise<string | null> => {
+    const o = shiftOptions.find((x) => x.key === k);
+    if (!o || !day) return null;
+    if (entries[k]?.id) return entries[k].id!;
+    const { data: found } = await supabase.from("rev_shift_entries").select("id").eq("day_id", day.id).eq("section_id", o.section_id).eq("shift", o.shift).maybeSingle();
+    let id = found?.id as string | undefined;
+    if (!id) {
+      const { data: ins, error } = await supabase.from("rev_shift_entries").insert({ day_id: day.id, section_id: o.section_id, shift: o.shift, created_by: email }).select("id").single();
+      if (error) { setMsg({ type: "err", text: error.message }); return null; }
+      id = ins.id;
+    }
+    setEntries((prev) => ({ ...prev, [k]: { ...(prev[k] || blankEntry(day.id, o.section_id, o.shift)), id } }));
+    return id!;
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -522,9 +562,12 @@ export default function DailyEntry() {
               {expenses.length > 0 && (
                 <table className="tbl mb-3"><thead><tr><th>Category</th><th>Specification</th><th>Paid to</th><th>Shift</th><th className="num">Amount</th><th /></tr></thead>
                   <tbody>{expenses.map((x) => { const c = categories.find((cc) => cc.id === x.category_id); return (
-                    <tr key={x.id}><td>{c?.name}{c?.flag_for_owner && <span title="Flagged for owner" style={{ color: "#c9a227" }}> ⚑</span>}</td><td>{x.description}</td><td style={{ color: "#9aa0a8" }}>{x.paid_to}</td><td style={{ color: "#6b7280" }}>{x.shift || ""}</td><td className="num">{fmtK(x.amount)}</td>
-                      <td className="num">{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_expenses", x.id)}>✕</button>}</td></tr>); })}</tbody></table>
+                    <tr key={x.id} className={editable ? "row-hover" : ""} title={editable ? "Click to edit" : undefined}
+                      style={{ cursor: editable ? "pointer" : "default", background: editExpId === x.id ? "#1f242b" : undefined }}
+                      onClick={() => editable && startEditExpense(x)}><td>{c?.name}{c?.flag_for_owner && <span title="Flagged for owner" style={{ color: "#c9a227" }}> ⚑</span>}</td><td>{x.description}</td><td style={{ color: "#9aa0a8" }}>{x.paid_to}</td><td style={{ color: "#6b7280" }}>{x.shift || ""}</td><td className="num">{fmtK(x.amount)}</td>
+                      <td className="num">{editable && <button className="btn btn-sm btn-red" onClick={(ev) => { ev.stopPropagation(); if (editExpId === x.id) { setEditExpId(null); setFx(blankFx); } deleteRow("rev_expenses", x.id); }}>✕</button>}</td></tr>); })}</tbody></table>
               )}
+              {editable && editExpId && <div className="text-[11px] mb-1.5" style={{ color: "#c9a227" }}>Editing the highlighted expense. Change the fields below and press Update.</div>}
               {editable && (
                 <div className="grid gap-2" style={{ gridTemplateColumns: "minmax(0,1.3fr) minmax(0,2fr) minmax(0,1fr) 90px 110px auto" }}>
                   <select className="inp" value={fx.category_id} onChange={(e) => setFx({ ...fx, category_id: e.target.value })}><option value="">Category</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
@@ -532,10 +575,10 @@ export default function DailyEntry() {
                   <input className="inp" placeholder="Paid to (optional)" value={fx.paid_to} onChange={(e) => setFx({ ...fx, paid_to: e.target.value })} />
                   <select className="inp" value={fx.shift} onChange={(e) => setFx({ ...fx, shift: e.target.value })}><option value="">Shift</option><option value="day">Day</option><option value="night">Night</option></select>
                   <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="Amount" value={fx.amount} onChange={(e) => setFx({ ...fx, amount: e.target.value })} />
-                  <button className="btn btn-sm btn-green" disabled={!fx.category_id || !fx.description.trim() || num(fx.amount) <= 0} onClick={async () => {
-                    if (await insertRow("rev_expenses", { day_id: day.id, category_id: fx.category_id, description: fx.description.trim(), amount: r2(num(fx.amount)), shift: fx.shift || null, paid_to: fx.paid_to || null, entered_by: email }))
-                      setFx({ category_id: "", description: "", amount: "", shift: "", paid_to: "" });
-                  }}>Add</button>
+                  <div className="flex gap-1">
+                    <button className="btn btn-sm btn-green" disabled={!fx.category_id || !fx.description.trim() || num(fx.amount) <= 0} onClick={saveExpense}>{editExpId ? "Update" : "Add"}</button>
+                    {editExpId && <button className="btn btn-sm" onClick={() => { setEditExpId(null); setFx(blankFx); }}>Cancel</button>}
+                  </div>
                 </div>
               )}
             </div>
@@ -550,14 +593,14 @@ export default function DailyEntry() {
                       <td className="num">{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_cash_transfers", t.id)}>✕</button>}</td></tr>); })}</tbody></table>
               )}
               {editable && (
-                <div className="grid gap-2" style={{ gridTemplateColumns: "130px minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.5fr) 90px 110px auto" }}>
+                <div className="grid gap-2" style={{ gridTemplateColumns: "130px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.4fr) 132px 110px auto" }}>
                   <select className="inp" value={ft.direction} onChange={(e) => setFt({ ...ft, direction: e.target.value })}><option value="sent">Sent from shop</option><option value="received">Received by shop</option></select>
                   <select className="inp" value={ft.counterparty_id} onChange={(e) => { const cp = counterparties.find((c) => c.id === e.target.value); setFt({ ...ft, counterparty_id: e.target.value, mobile_number: cp?.mobile_number || "" }); }}>
                     <option value="">Counterparty</option>{counterparties.filter((c) => (ft.direction === "sent" ? c.can_receive : c.can_send)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <input className="inp" placeholder="Mobile number" value={ft.mobile_number} onChange={(e) => setFt({ ...ft, mobile_number: e.target.value })} />
-                  <EmployeeSelect employees={employees} value={ft.done_by_employee_id} onChange={(v) => setFt({ ...ft, done_by_employee_id: v })} placeholder="Done by" />
-                  <input type="time" className="inp" value={ft.time} onChange={(e) => setFt({ ...ft, time: e.target.value })} />
+                  <EmployeeSelect employees={managers.length ? managers : employees} value={ft.done_by_employee_id} onChange={(v) => setFt({ ...ft, done_by_employee_id: v })} placeholder="Done by (manager)" />
+                  <TimeSelect value={ft.time} onChange={(v) => setFt({ ...ft, time: v })} />
                   <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="Amount" value={ft.amount} onChange={(e) => setFt({ ...ft, amount: e.target.value })} />
                   <button className="btn btn-sm btn-green" disabled={!ft.counterparty_id || num(ft.amount) <= 0} onClick={async () => {
                     const done_at = ft.time ? fromLocalInput(`${date}T${ft.time}`) : new Date().toISOString();
@@ -572,9 +615,9 @@ export default function DailyEntry() {
             <div className="chart-card">
               <div className="h2">Staff shortages <span style={{ color: "#9aa0a8", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>• today {fmtK(live.sh)}</span></div>
               {shortages.length > 0 && (
-                <table className="tbl mb-3"><thead><tr><th>Staff</th><th>Reason</th><th>Note</th><th>Resolution</th><th className="num">Amount</th><th /></tr></thead>
+                <table className="tbl mb-3"><thead><tr><th>Staff</th><th>Shift</th><th>Reason</th><th>Note</th><th>Resolution</th><th className="num">Amount</th><th /></tr></thead>
                   <tbody>{shortages.map((s) => (
-                    <tr key={s.id}><td>{s.employee_id ? empName(s.employee_id) : <span style={{ color: "#c9a227" }}>{s.employee_text} (unmatched)</span>}</td><td>{reasons.find((r) => r.id === s.reason_id)?.name}</td><td style={{ color: "#9aa0a8" }}>{s.note}</td>
+                    <tr key={s.id}><td>{s.employee_id ? empName(s.employee_id) : <span style={{ color: "#c9a227" }}>{s.employee_text} (unmatched)</span>}</td><td style={{ color: "#9aa0a8" }}>{shiftLabel(s.shift_entry_id)}</td><td>{reasons.find((r) => r.id === s.reason_id)?.name}</td><td style={{ color: "#9aa0a8" }}>{s.note}</td>
                       <td style={{ color: s.resolution === "cash_repaid" ? "#3fb67a" : "#9aa0a8" }}>{s.resolution === "payroll" ? "Deduct from pay" : s.resolution === "cash_repaid" ? `Repaid ${fmtK(s.repaid_amount)}` : "Written off"}{s.payroll_synced_at ? " • synced" : ""}</td>
                       <td className="num" style={{ color: "#d9534f" }}>{fmtK(s.amount)}</td>
                       <td className="num">{editable && <button className="btn btn-sm btn-red" onClick={() => deleteRow("rev_shortages", s.id)}>✕</button>}</td></tr>))}</tbody></table>
@@ -585,11 +628,13 @@ export default function DailyEntry() {
                   <select className="inp" value={fs.reason_id} onChange={(e) => setFs({ ...fs, reason_id: e.target.value })}><option value="">Reason</option>{reasons.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</select>
                   <input className="inp" placeholder="Note (optional)" value={fs.note} onChange={(e) => setFs({ ...fs, note: e.target.value })} />
                   <select className="inp" value={fs.shift_entry_id} onChange={(e) => setFs({ ...fs, shift_entry_id: e.target.value })}>
-                    <option value="">Shift (optional)</option>{shiftEntriesForSelect.map(([k, e]) => <option key={k} value={e.id}>{e.shift === "day" ? "Day" : "Night"}{sections.length > 1 ? ` • ${sections.find((s) => s.id === e.section_id)?.name}` : ""}</option>)}
+                    <option value="">Shift</option>{shiftOptions.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
                   </select>
                   <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="Amount" value={fs.amount} onChange={(e) => setFs({ ...fs, amount: e.target.value })} />
                   <button className="btn btn-sm btn-green" disabled={!fs.employee_id || num(fs.amount) <= 0} onClick={async () => {
-                    if (await insertRow("rev_shortages", { day_id: day.id, branch_id: branchId, employee_id: fs.employee_id, shortage_date: date, amount: r2(num(fs.amount)), reason_id: fs.reason_id || null, note: fs.note || null, shift_entry_id: fs.shift_entry_id || null, created_by: email }))
+                    let shiftEntryId: string | null = null;
+                    if (fs.shift_entry_id) { shiftEntryId = await ensureShiftEntry(fs.shift_entry_id); if (!shiftEntryId) return; }
+                    if (await insertRow("rev_shortages", { day_id: day.id, branch_id: branchId, employee_id: fs.employee_id, shortage_date: date, amount: r2(num(fs.amount)), reason_id: fs.reason_id || null, note: fs.note || null, shift_entry_id: shiftEntryId, created_by: email }))
                       setFs({ employee_id: "", amount: "", reason_id: "", note: "", shift_entry_id: "" });
                   }}>Add</button>
                 </div>
@@ -601,7 +646,7 @@ export default function DailyEntry() {
               )}
               {outstanding.length > 0 && (
                 <div className="mt-3 pt-3" style={{ borderTop: "1px solid #181c21" }}>
-                  <div className="lbl">Outstanding shortages from earlier days (not yet repaid in cash)</div>
+                  <div className="lbl">Outstanding shortages earlier this month (not yet repaid in cash)</div>
                   <table className="tbl"><tbody>{outstanding.map((s) => (
                     <tr key={s.id}><td style={{ color: "#6b7280" }}>{dmy(s.shortage_date)}</td><td>{s.employee_id ? empName(s.employee_id) : s.employee_text}</td><td style={{ color: "#9aa0a8" }}>{s.note}</td><td className="num">{fmtK(s.amount)}</td>
                       <td className="num">{editable && <button className="btn btn-sm" onClick={async () => { const { error } = await supabase.rpc("rev_mark_repaid", { p_shortage_id: s.id, p_repaid_day_id: day.id }); if (error) setMsg({ type: "err", text: error.message }); else refreshLists(); }}>Repaid in cash today</button>}</td></tr>))}</tbody></table>
@@ -663,11 +708,17 @@ export default function DailyEntry() {
                       <input type="number" step="0.01" min="0" className="inp inp-num" placeholder="0.00" value={count.other_amount || ""} onChange={(e) => { setCount({ ...count, other_amount: e.target.value === "" ? 0 : (e.target.value as any) }); setDirty(true); }} disabled={!editable} />
                     </div>
                   </div>
-                  <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 170px" }}>
+                  <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) 290px" }}>
                     <div><label className="lbl">Other note</label><input className="inp" placeholder="e.g. coins bag, mobile money float" value={count.other_note || ""} onChange={(e) => { setCount({ ...count, other_note: e.target.value }); setDirty(true); }} disabled={!editable} /></div>
                     <div><label className="lbl">Counted by</label><EmployeeSelect employees={employees} value={count.counted_by_employee_id} onChange={(v) => { setCount({ ...count, counted_by_employee_id: v || null }); setDirty(true); }} disabled={!editable} /></div>
                     <div><label className="lbl">Witness</label><EmployeeSelect employees={employees} value={count.witness_employee_id} onChange={(v) => { setCount({ ...count, witness_employee_id: v || null }); setDirty(true); }} disabled={!editable} placeholder="Optional" /></div>
-                    <div><label className="lbl">Counted at</label><input type="datetime-local" className="inp" value={toLocalInput(count.counted_at)} onChange={(e) => { setCount({ ...count, counted_at: fromLocalInput(e.target.value) }); setDirty(true); }} disabled={!editable} /></div>
+                    <div><label className="lbl">Counted at (24h)</label>
+                      <div className="flex gap-1">
+                        <input type="date" className="inp" style={{ minWidth: 0 }} value={toLocalInput(count.counted_at).slice(0, 10)} disabled={!editable}
+                          onChange={(e) => { const t = toLocalInput(count.counted_at).slice(11, 16) || "08:00"; setCount({ ...count, counted_at: e.target.value ? fromLocalInput(`${e.target.value}T${t}`) : null }); setDirty(true); }} />
+                        <TimeSelect value={toLocalInput(count.counted_at).slice(11, 16)} disabled={!editable}
+                          onChange={(v) => { const d0 = toLocalInput(count.counted_at).slice(0, 10) || addDays(date, 1); setCount({ ...count, counted_at: fromLocalInput(`${d0}T${v || "00:00"}`) }); setDirty(true); }} />
+                      </div></div>
                   </div>
                   <div className="mt-3 text-[13px]">Counted total: <b style={{ color: "#c9a227" }}>{fmtK(countTotal(count))}</b></div>
                 </>
